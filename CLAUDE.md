@@ -6,13 +6,57 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 - Desktop shell: `coffeegrind123/prinny-client` (this repo)
 - Frontend (submodule): `coffeegrind123/cinny` branch `desktop-notifications`
 
+## Changelog Rules
+
+**Every commit and push MUST include a `cinny/CHANGELOG.md` update.** That file is the source of truth for both:
+- The in-app changelog viewer (the empty-state screen — `cinny/src/app/features/changelog/Changelog.tsx` imports `CHANGELOG.md?raw` and parses it).
+- GitHub Releases (`scripts/release-notes.mjs` extracts the latest dated section for the release body — see "Cutting a release").
+
+**Format — one entry per day, newest section at the top:**
+
+```markdown
+## DD.MM.YYYY
+
+- `abc1234` Added <feature> — <description>
+- `def5678` Fixed <bug> — <description>
+- `ghi9012` Improved <thing> — <description>
+```
+
+**Rules:**
+- Date format `DD.MM.YYYY` (European, matching Finland timezone — `date +%d.%m.%Y`).
+- Each bullet starts with the 7-char commit SHA in backticks, then a verb: `Added` / `Fixed` / `Improved` / `Disabled` / `Removed`.
+- ONE section per day at the TOP of the file. If today's section already exists, append to it — don't create a duplicate.
+- Be specific — include component names, file paths, flag names, numbers.
+- Group related changes from the same commit into one bullet.
+- Don't bullet documentation-only or trivial changes — fold into the nearest feature bullet, or skip.
+- Inline `code` spans with backticks render as styled inline tokens in the viewer; everything else is plain text.
+- Use both prinny-client and cinny submodule commit SHAs as appropriate — the viewer links them all to the cinny commit page by default, which is fine for cross-linking either repo via GitHub's prefix lookup.
+
+**Workflow:**
+```bash
+# After making changes in cinny submodule:
+cd cinny
+vim CHANGELOG.md      # add bullet(s) under today's section (or create one)
+git add -A && git commit -m "<short msg>"
+git push origin desktop-notifications
+
+# Use the actual commit SHA in the changelog bullet — git records the SHA at
+# commit time, so amend the changelog entry AFTER the commit if needed:
+SHA=$(git rev-parse --short=7 HEAD)
+sed -i "s/<placeholder>/$SHA/" CHANGELOG.md   # replace your placeholder
+git commit --amend --no-edit
+git push --force-with-lease origin desktop-notifications
+```
+
+For prinny-client-only commits (e.g. workflow edits, CLAUDE.md), bullet them in `cinny/CHANGELOG.md` too — the user-facing changelog is single-source for both repos. Update the cinny submodule pointer in the same prinny-client commit.
+
 ## Cutting a release
 
 **Every push to `main` is automatically a release.** No manual tagging needed.
 
 The `create-release` job in `build.yml` auto-bumps the patch version from the latest `v*` tag, creates the tag + GitHub release atomically via `gh release create --target`, and the full pipeline runs:
 
-1. `create-release` — auto-computes next version (e.g. `v4.11.11` → `v4.11.12`), generates release notes from `git log`, deletes old versioned releases, creates new release with tag
+1. `create-release` — auto-computes next version (e.g. `v4.11.11` → `v4.11.12`), runs `node scripts/release-notes.mjs` which extracts the latest dated section from `cinny/CHANGELOG.md` and appends a collapsed `<details>` block of the raw commit log for traceability; deletes old versioned releases, creates new release with tag
 2. All 4 platform builds run in parallel, upload to the release
 3. `archive` uploads a source zip
 4. `release-update` runs `scripts/release.mjs` to generate `release.json` on the `tauri` tag — this powers the in-app updater

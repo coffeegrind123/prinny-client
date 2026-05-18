@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          submodules: true  # need cinny/CHANGELOG.md for release notes
 
       - name: Compute version
         id: version
@@ -45,15 +46,20 @@ jobs:
       - name: Generate release notes
         id: notes
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
+          # Pulls the most-recent dated section out of cinny/CHANGELOG.md
+          # (the same file the in-app changelog viewer renders). Falls back
+          # to "see commit log" only if the changelog file is missing or
+          # has no dated sections — every release should ship with a real
+          # one written as part of the feature commit.
+          node scripts/release-notes.mjs
+
+          # Append the raw commit log too for traceability. The changelog
+          # is curated; the commit log is exhaustive.
           PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | head -1)
-          # Write notes to a file (never to a $GITHUB_OUTPUT string) so commit
-          # subjects containing quotes / backticks / $ can't break later
-          # `gh release create --notes "..."` shell interpolation.
-          if [ -z "$PREV_TAG" ]; then
-            echo "Initial release." > release-notes.md
-          else
-            git log --oneline --no-merges "${PREV_TAG}..HEAD" | sed 's/^/- /' > release-notes.md
+          if [ -n "$PREV_TAG" ]; then
+            printf '\n---\n\n<details><summary>All commits in this release</summary>\n\n' >> release-notes.md
+            git log --oneline --no-merges "${PREV_TAG}..HEAD" | sed 's/^/- /' >> release-notes.md
+            printf '\n</details>\n' >> release-notes.md
           fi
           echo "--- release notes ---"
           cat release-notes.md

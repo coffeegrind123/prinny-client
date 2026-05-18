@@ -12,3 +12,6 @@ debug.keystore
 
 # Tauri updater minisign keypair + password — NEVER commit
 .secrets/
+
+# Local smoke-test output of scripts/release-notes.mjs (CI writes it fresh each run)
+release-notes.md
