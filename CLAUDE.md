@@ -21,6 +21,22 @@ After the release CI completes, the `release.json` on the `tauri` tag will inclu
 
 **If the release CI fails**, fix the issue, commit, and push to main again — it'll auto-bump to the next version.
 
+## Webapp distribution (self-hosters)
+
+The cinny submodule auto-publishes a built copy of itself to the `webapp-release` orphan branch in `coffeegrind123/cinny` on every push to `desktop-notifications`. Self-hosters install with one clone and update with `git pull` — no `npm` needed at deploy time.
+
+```bash
+git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
+cd /usr/share/webapps/prinny
+git pull   # later, to update
+```
+
+The workflow lives at `cinny/.github/workflows/publish-webapp.yml`. It runs `npm run build`, then commits the contents of `dist/` plus everything under `cinny/.github/webapp-release-template/` (README + nginx.conf) to `webapp-release` as a single linear commit per build. History stays linear, so `git pull` always fast-forwards.
+
+**Edits to the deploy-side files** (README, nginx.conf, install steps) are tracked in `cinny/.github/webapp-release-template/` on `desktop-notifications` and propagated on the next publish — never edit the `webapp-release` branch directly, it gets clobbered on every CI run.
+
+**First-run note:** The publish workflow creates `webapp-release` as an orphan branch on its first execution if it doesn't exist. No manual seeding required.
+
 ## Fresh clone & build
 
 ```bash
