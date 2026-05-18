@@ -417,15 +417,20 @@ jobs:
           node scripts/rebrand.mjs
           npm run build
       - name: Zip dist
+        # Two filenames: versioned for archive/permalink, stable for the
+        # README's `releases/latest/download/prinny-webapp.zip` link.
+        # `cp` (not `mv`) so both end up in the release.
         run: |
           cd cinny
           zip -r ../prinny-webapp-${{ needs.create-release.outputs.tag }}.zip dist
+          cp ../prinny-webapp-${{ needs.create-release.outputs.tag }}.zip ../prinny-webapp.zip
       - name: Upload to release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
           files: |
             prinny-webapp-${{ needs.create-release.outputs.tag }}.zip
+            prinny-webapp.zip
 
   # ── Source archive ──────────────────────────────────────────────
   archive:

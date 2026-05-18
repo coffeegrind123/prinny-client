@@ -16,21 +16,30 @@ Everything is on [GitHub Releases](https://github.com/coffeegrind123/prinny-clie
 | macOS | [DMG](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-universal.dmg) |
 | Linux | [AppImage](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.AppImage) · [deb](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.deb) |
 | Android | [APK](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-android-universal.apk) (sideload) |
-| Web | [Self-host](#self-host-web) — git clone, point a webserver at it |
+| Web | [zip](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-webapp.zip) · [git self-host](#self-host-web) |
 
 Desktop builds update themselves via `release.json`. Android checks on launch and downloads new APKs when available.
 
 ### Self-host (web)
 
-The frontend is published as pre-built static assets to the [`webapp-release`](https://github.com/coffeegrind123/cinny/tree/webapp-release) branch of `coffeegrind123/cinny`. Install once, update with `git pull` — no npm, no build step.
+Two ways, pick whichever matches how you deploy.
+
+**Option A — Tagged zip.** Grab `prinny-webapp.zip` from the [latest release](https://github.com/coffeegrind123/prinny-client/releases/latest), unzip somewhere your webserver serves, point at the `dist/` directory inside. One-shot upload; re-download on each release.
+
+```bash
+curl -L -o prinny-webapp.zip \
+  https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-webapp.zip
+unzip prinny-webapp.zip -d /usr/share/webapps/prinny   # extracts to /usr/share/webapps/prinny/dist
+```
+
+**Option B — git clone.** Track the [`webapp-release`](https://github.com/coffeegrind123/cinny/tree/webapp-release) branch of `coffeegrind123/cinny`. Install once, update with `git pull` — no npm, no build step. History is linear so pulls always fast-forward.
 
 ```bash
 git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
-# later, to update:
-cd /usr/share/webapps/prinny && git pull
+cd /usr/share/webapps/prinny && git pull   # later, to update
 ```
 
-The branch ships its own `nginx.conf` and `README.md` covering the SPA-rewrite rules every webserver needs. Each commit is one CI build; history is linear, so `git pull` always fast-forwards.
+The `webapp-release` branch ships its own `nginx.conf` and `README.md` covering the SPA-rewrite rules every webserver needs. The zip ships those alongside `dist/` too.
 
 ## Features
 
