@@ -1,0 +1,68 @@
+name: Auto-bump cinny submodule
+
+# Reactive submodule bump. Fires when coffeegrind123/cinny's publish-webapp
+# workflow finishes a successful build and dispatches `cinny-pushed`. Updates
+# the cinny gitlink to the current head of coffeegrind123/cinny:desktop-notifications.
+#
+# Commits with `[skip ci]` so we don't auto-release the desktop client on
+# every cinny change — the pointer just stays current. A real desktop release
+# happens on the next non-[skip ci] commit to main, which carries the
+# accumulated cinny changes.
+#
+# Manual trigger (workflow_dispatch) is also wired up so the bump can be
+# forced from the Actions tab if the dispatch path is misconfigured.
+
+on:
+  repository_dispatch:
+    types: [cinny-pushed]
+  workflow_dispatch:
+
+concurrency:
+  group: auto-bump-cinny
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump cinny gitlink if upstream moved
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # No submodules: true — we only update the recorded SHA, not the worktree.
+
+      - name: Resolve latest cinny SHA
+        id: cinny
+        run: |
+          set -euo pipefail
+          SHA=$(git ls-remote https://github.com/coffeegrind123/cinny.git desktop-notifications | awk '{print $1}')
+          if [ -z "$SHA" ]; then
+            echo "::error::Failed to resolve cinny desktop-notifications HEAD"
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:8}" >> "$GITHUB_OUTPUT"
+          echo "Latest cinny SHA: $SHA"
+
+      - name: Update gitlink if it moved
+        env:
+          NEW_SHA: ${{ steps.cinny.outputs.sha }}
+          NEW_SHORT: ${{ steps.cinny.outputs.short }}
+        run: |
+          set -euo pipefail
+          OLD_SHA=$(git ls-tree HEAD -- cinny | awk '{print $3}')
+          OLD_SHORT="${OLD_SHA:0:8}"
+          if [ "$NEW_SHA" = "$OLD_SHA" ]; then
+            echo "Already at $NEW_SHORT — nothing to bump"
+            exit 0
+          fi
+          echo "Bumping cinny: $OLD_SHORT -> $NEW_SHORT"
+
+          # Update the submodule's gitlink without checking out the worktree.
+          # Mode 160000 is git's special marker for submodule entries.
+          git update-index --cacheinfo 160000,$NEW_SHA,cinny
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Auto-bump cinny submodule to $NEW_SHORT [skip ci]"
+          git push origin main
