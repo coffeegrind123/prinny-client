@@ -164,6 +164,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          # Keep the release as a draft — release-update flips it to
+          # published once every platform job has uploaded. Without this,
+          # softprops defaults to draft=false and toggles the release to
+          # published on the first upload, which was the bug that left
+          # `/latest/download/<file>` 404'ing for missing platforms.
+          draft: true
           files: |
             src-tauri/target/release/bundle/msi/Prinny_desktop-x86_64.msi
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.exe
@@ -238,6 +244,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          # Keep the release as a draft — release-update flips it to
+          # published once every platform job has uploaded. Without this,
+          # softprops defaults to draft=false and toggles the release to
+          # published on the first upload, which was the bug that left
+          # `/latest/download/<file>` 404'ing for missing platforms.
+          draft: true
           files: |
             src-tauri/target/release/bundle/deb/Prinny_desktop-x86_64.deb
             src-tauri/target/release/bundle/appimage/Prinny_desktop-x86_64.AppImage
@@ -308,6 +320,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          # Keep the release as a draft — release-update flips it to
+          # published once every platform job has uploaded. Without this,
+          # softprops defaults to draft=false and toggles the release to
+          # published on the first upload, which was the bug that left
+          # `/latest/download/<file>` 404'ing for missing platforms.
+          draft: true
           files: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/Prinny_desktop-universal.dmg
             src-tauri/target/universal-apple-darwin/release/bundle/macos/Prinny_desktop-universal.app.tar.gz
@@ -383,6 +401,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          # Keep the release as a draft — release-update flips it to
+          # published once every platform job has uploaded. Without this,
+          # softprops defaults to draft=false and toggles the release to
+          # published on the first upload, which was the bug that left
+          # `/latest/download/<file>` 404'ing for missing platforms.
+          draft: true
           files: |
             prinny-android-universal.apk
             prinny-android-universal.apk.sha256
@@ -416,19 +440,19 @@ jobs:
           node scripts/rebrand.mjs
           npm run build
       - name: Zip dist
-        # Two filenames: versioned for archive/permalink, stable for the
-        # README's `releases/latest/download/prinny-webapp.zip` link.
-        # `cp` (not `mv`) so both end up in the release.
+        # Stable filename — the release tag carries the version, matching
+        # every other platform asset (.dmg/.msi/.exe/.AppImage/.deb).
+        # `releases/latest/download/prinny-webapp.zip` resolves to
+        # whatever's in the latest release.
         run: |
           cd cinny
-          zip -r ../prinny-webapp-${{ needs.create-release.outputs.tag }}.zip dist
-          cp ../prinny-webapp-${{ needs.create-release.outputs.tag }}.zip ../prinny-webapp.zip
+          zip -r ../prinny-webapp.zip dist
       - name: Upload to release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          draft: true
           files: |
-            prinny-webapp-${{ needs.create-release.outputs.tag }}.zip
             prinny-webapp.zip
 
   # ── Source archive ──────────────────────────────────────────────
@@ -451,6 +475,7 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
+          draft: true
           files: |
             ${{ github.event.repository.name }}-${{ needs.create-release.outputs.tag }}.zip
 
