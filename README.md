@@ -16,8 +16,21 @@ Everything is on [GitHub Releases](https://github.com/coffeegrind123/prinny-clie
 | macOS | [DMG](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-universal.dmg) |
 | Linux | [AppImage](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.AppImage) · [deb](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.deb) |
 | Android | [APK](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-android-universal.apk) (sideload) |
+| Web | [Self-host](#self-host-web) — git clone, point a webserver at it |
 
 Desktop builds update themselves via `release.json`. Android checks on launch and downloads new APKs when available.
+
+### Self-host (web)
+
+The frontend is published as pre-built static assets to the [`webapp-release`](https://github.com/coffeegrind123/cinny/tree/webapp-release) branch of `coffeegrind123/cinny`. Install once, update with `git pull` — no npm, no build step.
+
+```bash
+git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
+# later, to update:
+cd /usr/share/webapps/prinny && git pull
+```
+
+The branch ships its own `nginx.conf` and `README.md` covering the SPA-rewrite rules every webserver needs. Each commit is one CI build; history is linear, so `git pull` always fast-forwards.
 
 ## Features
 
