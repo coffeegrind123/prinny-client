@@ -64,17 +64,14 @@ jobs:
           echo "--- release notes ---"
           cat release-notes.md
 
-      - name: Delete old versioned releases
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CURRENT_TAG="${{ steps.version.outputs.tag }}"
-          gh api "repos/${{ github.repository }}/releases" --jq '.[] | select(.tag_name | startswith("v")) | select(.tag_name != $ENV.CURRENT_TAG) | .id' | while read id; do
-            echo "Deleting old release $id"
-            gh api -X DELETE "repos/${{ github.repository }}/releases/$id" --silent
-          done
-
-      - name: Create release
+      - name: Create draft release
+        # Stays a draft until release-update publishes it after every
+        # platform build has uploaded its artifacts. This way `/latest/
+        # download/<file>` keeps resolving to the previous release for
+        # the whole build window (~45 min while Android cross-compiles)
+        # instead of 404'ing on whichever platform hasn't finished yet.
+        # Old versioned releases are deleted in release-update AFTER the
+        # new one is fully assembled and flipped to published.
         id: create
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,16 +83,18 @@ jobs:
           else
             if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
               gh release create "$TAG" \
+                --draft \
                 --target "${{ github.sha }}" \
                 --title "Prinny Client $TAG" \
                 --notes-file release-notes.md
             else
               gh release create "$TAG" \
+                --draft \
                 --title "Prinny Client $TAG" \
                 --notes-file release-notes.md
             fi
             echo "created=true" >> $GITHUB_OUTPUT
-            echo "Published $TAG"
+            echo "Drafted $TAG"
           fi
 
   # ── Windows x86_64 ──────────────────────────────────────────────
@@ -457,7 +456,7 @@ jobs:
 
   # ── Release update metadata ─────────────────────────────────────
   release-update:
-    needs: [windows-x86_64, linux-x86_64, macos-universal, android, create-release]
+    needs: [windows-x86_64, linux-x86_64, macos-universal, android, webapp-zip, archive, create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -465,6 +464,33 @@ jobs:
       actions: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Publish the draft release
+        # Every platform build has uploaded its artifacts (`needs:` above
+        # makes this job wait for them). Flip the draft to published so
+        # `/latest/download/<file>` switches to the new tag atomically —
+        # no in-between window where some platforms are missing.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          gh release edit "$TAG" --draft=false
+          echo "Published $TAG"
+
+      - name: Delete old versioned releases
+        # Moved here (was in create-release) so the previous release
+        # stays "latest" until the new one is fully assembled. Now we
+        # can safely wipe old releases.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases" \
+            --jq '.[] | select(.tag_name | startswith("v")) | select(.tag_name != $ENV.CURRENT_TAG) | .id' \
+            | while read id; do
+              echo "Deleting old release $id"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/$id" --silent
+            done
+
       - name: Install dependencies
         run: npm ci
       - name: Generate release.json
