@@ -1,11 +1,18 @@
 /**
- * Stamp the current git version tag across all config files.
- * Run before build — reads git describe to get the version,
- * then writes it to tauri.conf.json, Cargo.toml, package.json,
- * and cinny/package.json.
+ * Stamp the canonical release version across all config files.
+ * Run before build. Resolution order:
  *
- * If not in a git repo or no tag, falls back to reading from
- * src-tauri/tauri.conf.json (the manual version).
+ *   1. PRINNY_VERSION env var — the CI flow passes the tag from
+ *      `create-release` here so every platform job stamps the SAME
+ *      version. The tag doesn't physically exist yet during downstream
+ *      builds (the release is still a draft — `gh release edit
+ *      --draft=false` is what actually creates the git tag), so
+ *      `git describe` returns the PREVIOUS tag, which silently shipped
+ *      mismatched-version installers and signatures for months.
+ *   2. `git describe --tags --abbrev=0` — for local dev / tag-triggered
+ *      CI runs where the tag is already present.
+ *   3. src-tauri/tauri.conf.json's existing version — last-resort
+ *      fallback when neither is available.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -15,17 +22,23 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function getVersion() {
+  const envVersion = process.env.PRINNY_VERSION;
+  if (envVersion && envVersion.trim()) {
+    const trimmed = envVersion.trim();
+    const value = trimmed.startsWith('v') ? trimmed.slice(1) : trimmed;
+    return { value, source: 'PRINNY_VERSION env' };
+  }
   try {
     const tag = execSync('git describe --tags --abbrev=0', {
       cwd: ROOT,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
-    if (tag.startsWith('v')) return tag.slice(1);
-    return tag;
+    const value = tag.startsWith('v') ? tag.slice(1) : tag;
+    return { value, source: 'git describe' };
   } catch {
     const conf = JSON.parse(readFileSync(join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-    return conf.version;
+    return { value: conf.version, source: 'tauri.conf.json fallback' };
   }
 }
 
@@ -38,8 +51,8 @@ function replaceInFile(path, pattern, replacement) {
   }
 }
 
-const version = getVersion();
-console.log(`[bump-version] Stamping version ${version}...`);
+const { value: version, source } = getVersion();
+console.log(`[bump-version] Stamping version ${version} (source: ${source})...`);
 
 // tauri.conf.json
 replaceInFile(

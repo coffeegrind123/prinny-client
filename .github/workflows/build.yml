@@ -104,6 +104,12 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Canonical release tag, passed through to bump-version.mjs so
+      # the build stamps the SAME version create-release just decided.
+      # `git describe` can't see this tag yet — `gh release create
+      # --draft` defers the actual git tag creation until publish.
+      PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -183,6 +189,8 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    env:
+      PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -263,6 +271,8 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    env:
+      PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -338,6 +348,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
