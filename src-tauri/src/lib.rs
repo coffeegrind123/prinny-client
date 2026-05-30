@@ -362,6 +362,281 @@ async fn fetch_remote_bytes(url: String) -> Result<tauri::ipc::Response, String>
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+// Maximum bytes read from an OG-preview target. OG/meta tags live in <head>,
+// near the very top of the document, so a small cap is plenty and bounds the
+// memory/bandwidth a single preview can cost.
+const OG_PREVIEW_MAX_BYTES: usize = 512 * 1024;
+
+// Decode the handful of HTML entities that realistically appear inside og:
+// `content` attributes. Anything unrecognised is left verbatim.
+fn decode_entities(input: &str) -> String {
+    if !input.contains('&') {
+        return input.to_string();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after = &rest[amp..];
+        let decoded = after.find(';').filter(|&semi| semi <= 10).and_then(|semi| {
+            let ent = &after[1..semi];
+            let ch = match ent {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" | "#39" => Some('\''),
+                "nbsp" => Some('\u{00A0}'),
+                _ => ent.strip_prefix('#').and_then(|num| {
+                    let (radix, digits) = match num.strip_prefix(['x', 'X']) {
+                        Some(hex) => (16, hex),
+                        None => (10, num),
+                    };
+                    u32::from_str_radix(digits, radix).ok().and_then(char::from_u32)
+                }),
+            };
+            ch.map(|c| (c, semi))
+        });
+        match decoded {
+            Some((c, semi)) => {
+                out.push(c);
+                rest = &after[semi + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = &after[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+// Parse the attributes inside a single tag body (the text between `<` and `>`),
+// tolerating single/double/unquoted values and arbitrary whitespace. Keys are
+// lower-cased; values are returned raw (entity-decoding happens later).
+fn parse_tag_attrs(tag: &str) -> std::collections::HashMap<String, String> {
+    let mut attrs = std::collections::HashMap::new();
+    let chars: Vec<char> = tag.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    // Skip the tag name (e.g. "meta").
+    while i < n && !chars[i].is_whitespace() {
+        i += 1;
+    }
+    while i < n {
+        while i < n && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= n {
+            break;
+        }
+        let start = i;
+        while i < n && chars[i] != '=' && !chars[i].is_whitespace() && chars[i] != '/' {
+            i += 1;
+        }
+        let name: String = chars[start..i].iter().collect::<String>().to_ascii_lowercase();
+        while i < n && chars[i].is_whitespace() {
+            i += 1;
+        }
+        let mut value = String::new();
+        if i < n && chars[i] == '=' {
+            i += 1;
+            while i < n && chars[i].is_whitespace() {
+                i += 1;
+            }
+            if i < n && (chars[i] == '"' || chars[i] == '\'') {
+                let quote = chars[i];
+                i += 1;
+                let vstart = i;
+                while i < n && chars[i] != quote {
+                    i += 1;
+                }
+                value = chars[vstart..i].iter().collect();
+                if i < n {
+                    i += 1;
+                }
+            } else {
+                let vstart = i;
+                while i < n && !chars[i].is_whitespace() && chars[i] != '/' {
+                    i += 1;
+                }
+                value = chars[vstart..i].iter().collect();
+            }
+        }
+        if !name.is_empty() {
+            attrs.insert(name, value);
+        }
+    }
+    attrs
+}
+
+// Scan an HTML document for og:/twitter:/<title> metadata and emit a map whose
+// keys mirror the Matrix `preview_url` response (og:title, og:description,
+// og:image, …) so the frontend renders a fallback card with zero special-casing.
+fn extract_og(html: &str) -> serde_json::Map<String, serde_json::Value> {
+    let lower = html.to_ascii_lowercase();
+    let mut props: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find("<meta") {
+        let start = from + rel;
+        let end = match html[start..].find('>') {
+            Some(e) => start + e,
+            None => break,
+        };
+        let attrs = parse_tag_attrs(&html[start + 1..end]);
+        let key = attrs.get("property").or_else(|| attrs.get("name"));
+        if let (Some(k), Some(c)) = (key, attrs.get("content")) {
+            props.entry(k.to_ascii_lowercase()).or_insert_with(|| c.clone());
+        }
+        from = end + 1;
+    }
+
+    let title_tag = lower.find("<title").and_then(|ts| {
+        html[ts..].find('>').and_then(|gt| {
+            let content_start = ts + gt + 1;
+            lower[content_start..]
+                .find("</title>")
+                .map(|te| html[content_start..content_start + te].trim().to_string())
+        })
+    });
+
+    let mut map = serde_json::Map::new();
+    let put = |map: &mut serde_json::Map<String, serde_json::Value>,
+               out_key: &str,
+               candidates: &[&str],
+               fallback: Option<&str>| {
+        for c in candidates {
+            if let Some(v) = props.get(*c) {
+                let dv = decode_entities(v.trim());
+                if !dv.is_empty() {
+                    map.insert(out_key.to_string(), serde_json::Value::String(dv));
+                    return;
+                }
+            }
+        }
+        if let Some(f) = fallback {
+            let f = f.trim();
+            if !f.is_empty() {
+                map.insert(out_key.to_string(), serde_json::Value::String(decode_entities(f)));
+            }
+        }
+    };
+
+    put(&mut map, "og:title", &["og:title", "twitter:title"], title_tag.as_deref());
+    put(
+        &mut map,
+        "og:description",
+        &["og:description", "twitter:description", "description"],
+        None,
+    );
+    put(
+        &mut map,
+        "og:image",
+        &[
+            "og:image",
+            "og:image:url",
+            "og:image:secure_url",
+            "twitter:image",
+            "twitter:image:src",
+        ],
+        None,
+    );
+    put(&mut map, "og:site_name", &["og:site_name"], None);
+    put(&mut map, "og:type", &["og:type"], None);
+    put(&mut map, "og:video", &["og:video", "og:video:url", "og:video:secure_url"], None);
+    put(&mut map, "og:image:width", &["og:image:width"], None);
+    put(&mut map, "og:image:height", &["og:image:height"], None);
+    map
+}
+
+// Build an OG-preview card for a generic webpage the homeserver couldn't
+// preview (commonly because the target rejects non-browser User-Agents and
+// Synapse's `preview_url` 504s). We fetch the page ourselves with a real Chrome
+// UA — server-to-server, bypassing CORS — and parse the meta tags locally.
+//
+// Unlike `fetch_remote_bytes`, this accepts ANY public host (a generic preview
+// can point anywhere), so it deliberately drops the media allowlist. Every
+// other SSRF guard is kept: scheme check, post-DNS private/reserved-IP
+// rejection, DNS pinning (no rebinding TOCTOU), per-hop redirect re-vetting
+// (auto-redirects disabled — each Location is validated as a fresh request),
+// and a hard response-size cap. It is gated behind an opt-in, default-off
+// setting on the frontend.
+#[tauri::command]
+async fn fetch_og_preview(url: String) -> Result<serde_json::Value, String> {
+    let mut current = reqwest::Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
+    for _hop in 0..6u8 {
+        match current.scheme() {
+            "http" | "https" => {}
+            other => return Err(format!("scheme not allowed: {other}")),
+        }
+        let host = current
+            .host_str()
+            .ok_or_else(|| "url has no host".to_string())?
+            .to_string();
+        let port = current.port_or_known_default().unwrap_or(443);
+        let addrs = resolve_public_addrs(&host, port).await?;
+
+        let client = reqwest::Client::builder()
+            .user_agent(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+                 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            )
+            .resolve(&host, addrs[0])
+            // Disable automatic redirects: we re-vet every hop (scheme +
+            // public-IP + DNS pin) by re-issuing the request ourselves, so a
+            // 3xx can never reach an internal host via an un-pinned re-resolve.
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| format!("client: {e}"))?;
+
+        let resp = client
+            .get(current.as_str())
+            .header(
+                reqwest::header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
+            .send()
+            .await
+            .map_err(|e| format!("send: {e}"))?;
+
+        let status = resp.status();
+        if status.is_redirection() {
+            let loc = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "redirect without location".to_string())?;
+            current = current
+                .join(loc)
+                .map_err(|e| format!("bad redirect target: {e}"))?;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+
+        let mut resp = resp;
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| format!("body: {e}"))? {
+            buf.extend_from_slice(&chunk);
+            if buf.len() >= OG_PREVIEW_MAX_BYTES {
+                buf.truncate(OG_PREVIEW_MAX_BYTES);
+                break;
+            }
+        }
+        let html = String::from_utf8_lossy(&buf);
+        let map = extract_og(&html);
+        if map.is_empty() {
+            return Err("no preview metadata found".to_string());
+        }
+        return Ok(serde_json::Value::Object(map));
+    }
+    Err("too many redirects".to_string())
+}
+
 #[tauri::command]
 async fn read_dropped_file(
     state: tauri::State<'_, DroppedPaths>,
@@ -537,6 +812,7 @@ pub fn run() {
             cache_notification_icon,
             read_dropped_file,
             fetch_remote_bytes,
+            fetch_og_preview,
             send_windows_message_toast,
         ])
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
