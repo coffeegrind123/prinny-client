@@ -341,7 +341,17 @@ Output: `app-release-signed.apk` (119MB, universal — all 4 ABIs, signed, insta
   -storepass android -keypass android
 ```
 
-The keystore is at the repo root (`debug.keystore`) and is `.gitignore`d — never commit it.
+The keystore is at the repo root (`debug.keystore`) and is `.gitignore`d — never commit it. This local `debug.keystore` is only for **manual sideloading during dev** — it is per-developer and unrelated to the in-app updater.
+
+### CI release signing & the updater (CRITICAL — stable key)
+
+**Every release APK must be signed with the SAME key, or in-app updates fail.** Android rejects an update whose signature doesn't match the installed app (`INSTALL_FAILED_UPDATE_INCOMPATIBLE` — "App not installed"): the APK downloads fine but won't install over the previous one, even after the user grants "install unknown apps." This is NOT a delta/patch problem — it's a signing-key mismatch.
+
+The old CI ran `keytool -genkeypair` in the Sign APK step, minting a **fresh random key every release** — so every update was un-installable. Fixed by committing a stable key, `prinny-ci.keystore` (repo root, alias `prinny`, store/key pass `prinny-updater`), and signing with it in `.github/workflows/build.yml`. It's a debug-grade key — same security posture as the old `debug.keystore`, acceptable for self-distribution over HTTPS GitHub releases.
+
+- **To harden:** set repo secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 your.keystore`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`. The Sign APK step prefers them over the committed keystore.
+- **Rotating the key (committed → secret, or any change) forces a one-time manual reinstall for every existing user** — their installed app was signed with the old key and can't be updated across a key change. Unavoidable; same caveat as the desktop minisign pubkey rotation.
+- **Existing users on the old random-key builds need ONE manual reinstall** to land on the stable key; after that, in-app updates work normally.
 
 ### How the build works (Tauri v2 Android internals)
 

@@ -384,18 +384,42 @@ jobs:
           export NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
           CARGO_BUILD_JOBS=1 npx tauri android build
 
+      # CRITICAL: sign every release with the SAME key. Previously this step
+      # ran `keytool -genkeypair` on each run, minting a fresh random key per
+      # release — so Android rejected every in-app update with "App not
+      # installed" (INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures don't match
+      # the installed app). The APK downloaded fine but could never install
+      # over the previous one. A persistent key fixes update continuity.
+      #
+      # Default: the committed `prinny-ci.keystore` (a debug-grade key, same
+      # security posture as the old debug.keystore — fine for self-distribution
+      # over HTTPS GitHub releases). To harden, set the ANDROID_KEYSTORE_BASE64
+      # / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS secrets and they win.
+      # Rotating the key forces existing users to reinstall once.
       - name: Sign APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -storepass android -keypass android
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Signing with keystore from ANDROID_KEYSTORE_BASE64 secret"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > ci-signing.keystore
+            KS_PASS="$ANDROID_KEYSTORE_PASSWORD"
+            KS_ALIAS="${ANDROID_KEY_ALIAS:-prinny}"
+          else
+            echo "Signing with committed prinny-ci.keystore (stable key)"
+            cp prinny-ci.keystore ci-signing.keystore
+            KS_PASS="prinny-updater"
+            KS_ALIAS="prinny"
+          fi
           $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
-            --ks debug.keystore --ks-pass pass:android \
-            --ks-key-alias androiddebugkey --key-pass pass:android \
+            --ks ci-signing.keystore --ks-pass "pass:$KS_PASS" \
+            --ks-key-alias "$KS_ALIAS" --key-pass "pass:$KS_PASS" \
             --out prinny-android-universal.apk \
             src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
+          rm -f ci-signing.keystore
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose prinny-android-universal.apk | head -5
           sha256sum prinny-android-universal.apk > prinny-android-universal.apk.sha256
 
       - name: Upload artifacts
