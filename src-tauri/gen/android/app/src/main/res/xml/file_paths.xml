@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Scoped to the public Downloads directory only. The single FileProvider
+  consumer is UpdateChecker.kt, which writes the update APK to
+  getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)/cinny-v<version>.apk
+  and exposes it via getUriForFile() for the install intent. The previous
+  path="." entries exposed the entire external-storage and cache roots, which
+  is far broader than needed.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-  <external-path name="my_images" path="." />
-  <cache-path name="my_cache_images" path="." />
+  <external-path name="apk_downloads" path="Download/" />
 </paths>

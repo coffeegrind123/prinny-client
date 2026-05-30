@@ -97,6 +97,50 @@ jobs:
             echo "Drafted $TAG"
           fi
 
+  # ── Dependency security audit ───────────────────────────────────
+  # Runs independently of the release jobs (no `needs`), so a flaky or
+  # unfixable advisory turns the run red as a visible signal but never blocks
+  # the release artifacts from building/uploading.
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+
+      # Hard gate: no CRITICAL-severity vulnerabilities in SHIPPED (production)
+      # deps. `high` is advisory-only below because cinny ships lodash@4.17.21
+      # transitively via slate — the open lodash advisories have no patched
+      # release upstream, so a `high` gate would be permanently red.
+      - name: "npm audit — root production deps (gate: critical)"
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: "npm audit — cinny production deps (gate: critical)"
+        working-directory: cinny
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: "npm audit — high severity (advisory, non-blocking)"
+        continue-on-error: true
+        run: |
+          echo "::group::root"
+          npm audit --omit=dev --audit-level=high || true
+          echo "::endgroup::"
+          echo "::group::cinny"
+          (cd cinny && npm audit --omit=dev --audit-level=high) || true
+          echo "::endgroup::"
+
+      # Advisory: Rust deps via RustSec. Non-blocking so an unfixable transitive
+      # advisory can't wedge the release pipeline.
+      - name: cargo audit (advisory, non-blocking)
+        continue-on-error: true
+        run: |
+          cargo install cargo-audit --locked || true
+          cargo audit --file src-tauri/Cargo.lock || true
+
   # ── Windows x86_64 ──────────────────────────────────────────────
   windows-x86_64:
     needs: [create-release]

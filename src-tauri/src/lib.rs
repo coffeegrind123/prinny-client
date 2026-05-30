@@ -5,10 +5,106 @@
 
 // mod menu;
 
-use tauri::{webview::{NewWindowResponse, WebviewWindowBuilder}, WebviewUrl};
+use std::collections::HashSet;
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use tauri::{webview::{NewWindowResponse, WebviewWindowBuilder}, Manager, WebviewUrl};
 use tauri_plugin_opener::OpenerExt;
 
 mod taskbar;
+
+// Paths the user actually dropped onto the window via the OS native drag-drop
+// path. `read_dropped_file` only reads paths that appear here, so a malicious
+// in-page script can't invoke it with an arbitrary path (e.g. /etc/passwd).
+#[derive(Default)]
+struct DroppedPaths(Mutex<HashSet<PathBuf>>);
+
+// ---- SSRF / remote-fetch guards -------------------------------------------
+
+// Media hosts our frontend legitimately proxies through `fetch_remote_bytes`
+// (Twitter/X CDN via vxtwitter, Bluesky video/image CDN). Suffix-matched, so
+// every subdomain (video.twimg.com, pbs.twimg.com, video.bsky.app,
+// cdn.bsky.app, …) is covered. Keep this list tight — it is the allowlist that
+// stops the command being used as a generic SSRF primitive.
+const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app"];
+
+fn host_allowed_media(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    ALLOWED_MEDIA_HOSTS
+        .iter()
+        .any(|suffix| host == *suffix || host.ends_with(&format!(".{suffix}")))
+}
+
+// True for any address a webview-supplied URL must never be allowed to reach:
+// loopback, RFC1918 private, link-local (incl. 169.254.169.254 cloud
+// metadata), CGNAT, benchmarking/documentation ranges, IPv6 unique-local /
+// link-local, multicast, unspecified. Blocking these after DNS resolution is
+// what neutralises SSRF to internal and cloud-metadata services.
+fn is_disallowed_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_unspecified()
+                // 100.64.0.0/10 CGNAT
+                || (o[0] == 100 && (o[1] & 0xC0) == 0x40)
+                // 192.0.0.0/24 IETF protocol assignments
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0)
+                // 198.18.0.0/15 benchmarking
+                || (o[0] == 198 && (o[1] & 0xFE) == 18)
+                // documentation ranges (TEST-NET-1/2/3)
+                || (o[0] == 192 && o[1] == 0 && o[2] == 2)
+                || (o[0] == 198 && o[1] == 51 && o[2] == 100)
+                || (o[0] == 203 && o[1] == 0 && o[2] == 113)
+        }
+        IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_disallowed_ip(&IpAddr::V4(mapped));
+            }
+            let seg = v6.segments();
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                // fc00::/7 unique local
+                || (seg[0] & 0xFE00) == 0xFC00
+                // fe80::/10 link local
+                || (seg[0] & 0xFFC0) == 0xFE80
+        }
+    }
+}
+
+// Resolve a host:port and reject the lookup outright if ANY resolved address is
+// private/reserved (defends against a hostname that resolves to a mix of public
+// and internal IPs). Returns the vetted addresses so the caller can pin them on
+// the reqwest client and defeat DNS-rebinding TOCTOU between this check and the
+// actual request.
+async fn resolve_public_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+    let host_owned = host.to_string();
+    let addrs: Vec<SocketAddr> = tauri::async_runtime::spawn_blocking(move || {
+        (host_owned.as_str(), port)
+            .to_socket_addrs()
+            .map(|it| it.collect::<Vec<_>>())
+    })
+    .await
+    .map_err(|e| format!("resolve task: {e}"))?
+    .map_err(|e| format!("resolve {host}: {e}"))?;
+
+    if addrs.is_empty() {
+        return Err(format!("no addresses for {host}"));
+    }
+    for a in &addrs {
+        if is_disallowed_ip(&a.ip()) {
+            return Err(format!("blocked private/reserved address {}", a.ip()));
+        }
+    }
+    Ok(addrs)
+}
 
 
 // Embedded overlay icons for Windows taskbar badge (1-9, 9+)
@@ -82,10 +178,10 @@ async fn cache_notification_icon(
     app: tauri::AppHandle,
     url: String,
     auth_header: Option<String>,
+    homeserver: Option<String>,
 ) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::fs;
-    use tauri::Manager;
 
     let mut hasher = Sha256::new();
     hasher.update(url.as_bytes());
@@ -109,15 +205,56 @@ async fn cache_notification_icon(
         }
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (compatible; PrinnyNotificationIcon/1.0)",
-        )
-        .build()
-        .map_err(|e| format!("client: {e}"))?;
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("scheme not allowed: {other}")),
+    }
+
+    // The Matrix access token may ONLY ride along to the user's own homeserver
+    // media endpoint. Anything else (or a missing/mismatched homeserver) is
+    // fetched without credentials AND SSRF-guarded, so this command can neither
+    // leak the token to an attacker-controlled URL nor be used to probe
+    // internal services.
+    let is_homeserver_media = match homeserver
+        .as_deref()
+        .and_then(|h| reqwest::Url::parse(h).ok())
+    {
+        Some(hs) => {
+            hs.scheme() == parsed.scheme()
+                && hs.host_str().is_some()
+                && hs.host_str() == parsed.host_str()
+                && hs.port_or_known_default() == parsed.port_or_known_default()
+                && parsed.path().contains("/_matrix/")
+        }
+        None => false,
+    };
+
+    let builder = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (compatible; PrinnyNotificationIcon/1.0)");
+
+    let client = if is_homeserver_media {
+        // Trusted destination (the user's chosen homeserver — which may legitimately
+        // live on a LAN/private IP), so skip the private-address guard here.
+        builder.build().map_err(|e| format!("client: {e}"))?
+    } else {
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| "url has no host".to_string())?
+            .to_string();
+        let port = parsed.port_or_known_default().unwrap_or(443);
+        let addrs = resolve_public_addrs(&host, port).await?;
+        builder
+            .resolve(&host, addrs[0])
+            .build()
+            .map_err(|e| format!("client: {e}"))?
+    };
+
     let mut req = client.get(&url);
-    if let Some(auth) = auth_header.filter(|s| !s.is_empty()) {
-        req = req.header(reqwest::header::AUTHORIZATION, auth);
+    if is_homeserver_media {
+        if let Some(auth) = auth_header.filter(|s| !s.is_empty()) {
+            req = req.header(reqwest::header::AUTHORIZATION, auth);
+        }
     }
     let resp = req.send().await.map_err(|e| format!("send: {e}"))?;
     if !resp.status().is_success() {
@@ -173,11 +310,44 @@ struct DroppedFile {
 // a real Chrome UA and no Referer (twimg serves when Referer is absent).
 #[tauri::command]
 async fn fetch_remote_bytes(url: String) -> Result<tauri::ipc::Response, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("scheme not allowed: {other}")),
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "url has no host".to_string())?
+        .to_string();
+    if !host_allowed_media(&host) {
+        return Err(format!("host not allowed: {host}"));
+    }
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    let addrs = resolve_public_addrs(&host, port).await?;
+
     let client = reqwest::Client::builder()
         .user_agent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
              (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
         )
+        // Pin the vetted address so reqwest can't re-resolve to a rebound
+        // internal IP between our check and the request.
+        .resolve(&host, addrs[0])
+        // Only follow redirects that stay within the media allowlist; a 3xx to
+        // any other host is stopped (the caller gets the 3xx and errors out)
+        // so a redirect can't be used to reach an internal host.
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            match attempt.url().host_str() {
+                Some(h) if host_allowed_media(h) => {
+                    if attempt.previous().len() >= 10 {
+                        attempt.error("too many redirects")
+                    } else {
+                        attempt.follow()
+                    }
+                }
+                _ => attempt.stop(),
+            }
+        }))
         .build()
         .map_err(|e| format!("client: {e}"))?;
     let resp = client
@@ -193,18 +363,33 @@ async fn fetch_remote_bytes(url: String) -> Result<tauri::ipc::Response, String>
 }
 
 #[tauri::command]
-async fn read_dropped_file(path: String) -> Result<DroppedFile, String> {
-    let path_buf = std::path::PathBuf::from(&path);
-    let name = path_buf
+async fn read_dropped_file(
+    state: tauri::State<'_, DroppedPaths>,
+    path: String,
+) -> Result<DroppedFile, String> {
+    let requested = PathBuf::from(&path);
+    // Resolve symlinks/.. so the comparison can't be tricked, and so it matches
+    // the canonicalised form we stored on the drag-drop event.
+    let canon = std::fs::canonicalize(&requested)
+        .map_err(|e| format!("canonicalize {}: {}", path, e))?;
+
+    {
+        let set = state.0.lock().map_err(|_| "drop-state poisoned".to_string())?;
+        if !(set.contains(&canon) || set.contains(&requested)) {
+            return Err("path was not part of a drag-drop onto the window".to_string());
+        }
+    }
+
+    let name = canon
         .file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "file".to_string());
-    let mime = mime_guess::from_path(&path_buf)
+    let mime = mime_guess::from_path(&canon)
         .first_or_octet_stream()
         .essence_str()
         .to_string();
-    let bytes = std::fs::read(&path_buf).map_err(|e| format!("read {}: {}", path, e))?;
+    let bytes = std::fs::read(&canon).map_err(|e| format!("read {}: {}", path, e))?;
     Ok(DroppedFile { name, mime, bytes })
 }
 
@@ -324,6 +509,29 @@ pub fn run() {
     let port: u16 = 44548;
     let context = tauri::generate_context!();
     let mut builder = tauri::Builder::default()
+        .manage(DroppedPaths::default())
+        // Record the real OS paths from each native drag-drop so that
+        // `read_dropped_file` will only read files the user actually dropped.
+        // Observer-only (returns unit), so it never interferes with the
+        // frontend's own `onDragDropEvent` listener.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(state) = window.try_state::<DroppedPaths>() {
+                    if let Ok(mut set) = state.0.lock() {
+                        for p in paths {
+                            match std::fs::canonicalize(p) {
+                                Ok(canon) => {
+                                    set.insert(canon);
+                                }
+                                Err(_) => {
+                                    set.insert(p.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             set_badge_count,
             cache_notification_icon,
