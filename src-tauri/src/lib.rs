@@ -693,6 +693,7 @@ fn send_windows_message_toast(
     icon_path: Option<String>,
     room_id: String,
     event_id: String,
+    kind: String,
 ) -> Result<(), String> {
     use std::path::PathBuf;
     use tauri::Emitter;
@@ -727,6 +728,7 @@ fn send_windows_message_toast(
                 serde_json::json!({
                     "roomId": room_id,
                     "eventId": event_id,
+                    "kind": kind,
                 }),
             );
             Ok(())
@@ -748,6 +750,7 @@ fn send_windows_message_toast(
     _icon_path: Option<String>,
     _room_id: String,
     _event_id: String,
+    _kind: String,
 ) -> Result<(), String> {
     Err("send_windows_message_toast is Windows-only".to_string())
 }
