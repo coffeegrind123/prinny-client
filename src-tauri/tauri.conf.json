@@ -60,7 +60,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self' blob: data: filesystem: ws: wss: http: https: tauri:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: filesystem: tauri:; worker-src 'self' blob: data: tauri:; img-src 'self' data: blob: filesystem: http: https:; media-src 'self' blob: data: http: https: tauri:; frame-src 'self' https: http:; connect-src 'self' blob: ipc: ws: wss: http: https: http://ipc.localhost"
+      "csp": "default-src 'self' blob: data: filesystem: ws: wss: http: https: tauri:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: filesystem: tauri:; style-src 'self' 'unsafe-inline' blob: data: filesystem: http: https:; worker-src 'self' blob: data: tauri:; img-src 'self' data: blob: filesystem: http: https:; media-src 'self' blob: data: http: https: tauri:; frame-src 'self' https: http:; connect-src 'self' blob: ipc: ws: wss: http: https: http://ipc.localhost"
     }
   }
 }
