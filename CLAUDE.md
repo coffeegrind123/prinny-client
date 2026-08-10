@@ -417,11 +417,44 @@ The keystore is at the repo root (`debug.keystore`) and is `.gitignore`d — nev
 
 **Every release APK must be signed with the SAME key, or in-app updates fail.** Android rejects an update whose signature doesn't match the installed app (`INSTALL_FAILED_UPDATE_INCOMPATIBLE` — "App not installed"): the APK downloads fine but won't install over the previous one, even after the user grants "install unknown apps." This is NOT a delta/patch problem — it's a signing-key mismatch.
 
-The old CI ran `keytool -genkeypair` in the Sign APK step, minting a **fresh random key every release** — so every update was un-installable. Fixed by committing a stable key, `prinny-ci.keystore` (repo root, alias `prinny`, store/key pass `prinny-updater`), and signing with it in `.github/workflows/build.yml`. It's a debug-grade key — same security posture as the old `debug.keystore`, acceptable for self-distribution over HTTPS GitHub releases.
+The old CI ran `keytool -genkeypair` in the Sign APK step, minting a **fresh random key every release** — so every update was un-installable. That was "fixed" by committing a stable key, `prinny-ci.keystore`, to this **public** repo with its password hardcoded in `build.yml`. See the compromise warning below: that key is dead, and the CI now signs from repo secrets only.
 
-- **To harden:** set repo secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 your.keystore`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`. The Sign APK step prefers them over the committed keystore.
-- **Rotating the key (committed → secret, or any change) forces a one-time manual reinstall for every existing user** — their installed app was signed with the old key and can't be updated across a key change. Unavoidable; same caveat as the desktop minisign pubkey rotation.
-- **Existing users on the old random-key builds need ONE manual reinstall** to land on the stable key; after that, in-app updates work normally.
+#### 🚨 The committed `prinny-ci.keystore` is COMPROMISED — permanently
+
+`prinny-ci.keystore` (alias `prinny`, store/key pass `prinny-updater`, both published in this repo) was committed to a **public** repository. Treat it as belonging to everyone:
+
+- **Anyone can sign an APK with it.** Android's update rule is "same signing key = same app", so a third-party APK signed with this key installs *over* a user's Prinny install as a silent in-place update, inheriting its data and permissions. That is the whole threat, and it applies to every device that ever installed a `prinny-ci.keystore`-signed build.
+- **Deleting the file does not undo it.** The key remains in git history and in every already-published GitHub release. History is deliberately *not* rewritten — rewriting would break every fork/clone and would not un-publish what has been downloadable for months. The only real remediation is rotation.
+- **Rotating forces exactly one manual reinstall for every existing Android user.** Their installed app was signed with the old key; Android refuses any update signed by a different key (`INSTALL_FAILED_UPDATE_INCOMPATIBLE` — "App not installed"). Users must uninstall and install the new APK once. Unavoidable, and the same caveat as rotating the desktop minisign keypair. Announce it in the changelog/release notes.
+- Never reuse the old key "just for continuity". Continuity is worth less than a signing key the public holds.
+
+#### Current flow: secrets only, or the build fails
+
+The Sign APK step in `.github/workflows/build.yml` has **no committed-keystore fallback**. It requires all three secrets and exits non-zero with a clear error if any is unset — a red build beats silently shipping an APK signed with a key everyone has.
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 your-release.keystore` |
+| `ANDROID_KEYSTORE_PASSWORD` | Store password (also used as the key password) |
+| `ANDROID_KEY_ALIAS` | Key alias inside the keystore (no default — must be set) |
+
+Generate a fresh release key locally, keep it offline (a password manager / hardware-backed store — **not** this repo), and upload it as the secret:
+
+```bash
+keytool -genkeypair -v \
+  -keystore prinny-release.keystore -alias <alias> \
+  -keyalg RSA -keysize 4096 -validity 10000 \
+  -dname "CN=Prinny Client,O=Prinny,C=FI" \
+  -storepass "<strong-pass>" -keypass "<strong-pass>"
+base64 -w0 prinny-release.keystore   # -> ANDROID_KEYSTORE_BASE64
+```
+
+Handling details in the workflow, all of them load-bearing:
+
+- The password is passed to `apksigner` as `--ks-pass env:KS_PASS --key-pass env:KS_PASS`, never `pass:…` — a `pass:` argument is readable by any other process on the runner via the process table.
+- The decoded `ci-signing.keystore` is removed by a `trap … EXIT`, so it is deleted on the failure path too (the old unconditional `rm` after the sign command never ran if signing failed).
+- Every `*.keystore` / `*.jks` is `.gitignore`d now, not just `debug.keystore`.
+- **Existing users on the old random-key or `prinny-ci.keystore` builds need ONE manual reinstall** to land on the new key; after that, in-app updates work normally.
 
 ### How the build works (Tauri v2 Android internals)
 
@@ -506,7 +539,7 @@ JS: startForegroundService()
 | `cinny/src/app/hooks/useUnifiedPush.ts` | UP registration + Matrix pusher hook |
 | `cinny/src/app/utils/mobile-push.ts` | UP Tauri command wrappers |
 | `cinny/src/index.css` | Safe-area padding for device notches |
-| `.gitignore` | Excludes `*.apk`, `*.idsig`, `debug.keystore` |
+| `.gitignore` | Excludes `*.apk`, `*.idsig`, `*.keystore`, `*.jks` |
 
 ### Iteration (edit → test on device)
 

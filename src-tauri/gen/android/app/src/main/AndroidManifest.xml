@@ -28,16 +28,33 @@
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- android:allowBackup="false" — the app stores Matrix session material
+         (access token, E2EE device keys) in its private data dir. adb backup /
+         cloud auto-backup would copy that off the device, so backups are
+         disabled outright.
+         android:networkSecurityConfig — cleartext is denied app-wide there,
+         with a carve-out for loopback only (the bundled frontend on
+         127.0.0.1:44548). The usesCleartextTraffic placeholder stays wired up
+         (build.gradle.kts now sets it to "false") so the two flags agree; the
+         network security config is the authoritative one from API 24 up. -->
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.cinny"
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- android:taskAffinity="" — with minSdk 24 the API 24-29 range is
+             still open to StrandHogg-style task hijacking, where a malicious
+             app declares our task affinity and gets its own activity placed in
+             our task to phish the login UI. An empty affinity puts this
+             activity in a task nothing else can join by name. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
             android:label="@string/main_activity_title"
             android:name=".MainActivity"
+            android:taskAffinity=""
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

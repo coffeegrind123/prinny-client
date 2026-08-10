@@ -1,6 +1,6 @@
 {
   "identifier": "migrated",
-  "description": "permissions that were migrated from v1",
+  "description": "Permissions carried over from the Tauri v1 configuration, narrowed to what the frontend actually calls. This capability is granted to the remote origin below as well as to local assets, so every entry is reachable by whatever executes script in the page — treat additions accordingly.",
   "local": true,
   "remote": {
     "urls": [
@@ -12,15 +12,6 @@
   ],
   "permissions": [
     "core:default",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-read-dir",
-    "fs:allow-copy-file",
-    "fs:allow-mkdir",
-    "fs:allow-remove",
-    "fs:allow-remove",
-    "fs:allow-rename",
-    "fs:allow-exists",
     "core:window:allow-create",
     "core:window:allow-center",
     "core:window:allow-request-user-attention",
@@ -53,16 +44,6 @@
     "core:window:allow-set-cursor-position",
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-start-dragging",
-    "core:webview:allow-print",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "dialog:allow-message",
-    "dialog:allow-ask",
-    "dialog:allow-confirm",
-    {
-      "identifier": "http:default",
-      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
-    },
     "notification:default",
     "notification:allow-register-action-types",
     "notification:allow-register-listener",
@@ -74,6 +55,8 @@
     "core:tray:allow-set-show-menu-on-left-click",
     "core:menu:default",
     "core:app:allow-default-window-icon",
+    "core:app:allow-app-show",
+    "core:app:allow-app-hide",
     "os:allow-platform",
     "os:allow-version",
     "os:allow-os-type",
@@ -83,15 +66,6 @@
     "os:allow-locale",
     "os:allow-hostname",
     "process:allow-restart",
-    "process:allow-exit",
-    "clipboard-manager:allow-read-text",
-    "clipboard-manager:allow-write-text",
-    "core:app:allow-app-show",
-    "core:app:allow-app-hide",
-    "clipboard-manager:default",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
-    }
+    "process:allow-exit"
   ]
 }

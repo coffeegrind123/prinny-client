@@ -23,6 +23,42 @@ mod taskbar;
 #[derive(Default)]
 struct DroppedPaths(Mutex<HashSet<PathBuf>>);
 
+// The homeserver origin the application is actually connected to, recorded once
+// by the frontend rather than passed per-call. `cache_notification_icon` uses it
+// to decide whether the private-address guard may be relaxed; see that command
+// for why a per-call argument could not be trusted for that decision.
+#[derive(Default)]
+struct HomeserverOrigin(Mutex<Option<String>>);
+
+// Records the homeserver origin for the lifetime of the process. Called by the
+// frontend once the Matrix client is up. Only the origin is kept — any path,
+// query or fragment is discarded.
+#[tauri::command]
+fn set_homeserver_origin(
+    state: tauri::State<'_, HomeserverOrigin>,
+    origin: String,
+) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&origin).map_err(|e| format!("invalid origin: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("scheme not allowed: {other}")),
+    }
+    let normalized = format!(
+        "{}://{}",
+        parsed.scheme(),
+        parsed
+            .host_str()
+            .ok_or_else(|| "origin has no host".to_string())?
+    );
+    let normalized = match parsed.port() {
+        Some(p) => format!("{normalized}:{p}"),
+        None => normalized,
+    };
+    let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
+    *guard = Some(normalized);
+    Ok(())
+}
+
 // ---- SSRF / remote-fetch guards -------------------------------------------
 
 // Media hosts our frontend legitimately proxies through `fetch_remote_bytes`
@@ -31,6 +67,16 @@ struct DroppedPaths(Mutex<HashSet<PathBuf>>);
 // cdn.bsky.app, …) is covered. Keep this list tight — it is the allowlist that
 // stops the command being used as a generic SSRF primitive.
 const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app"];
+
+// Upper bound on any single media or notification-icon fetch. These commands
+// proxy URLs chosen by remote message content, so without a cap the sender
+// decides how much memory the native process allocates and how much it writes
+// to disk. 64 MiB is well above any real avatar, image or short video clip.
+const MEDIA_FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+// Upper bound on a single drag-dropped file read into memory and handed to the
+// page. Matrix homeservers cap uploads well below this.
+const DROPPED_FILE_MAX_BYTES: usize = 512 * 1024 * 1024;
 
 fn host_allowed_media(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
@@ -54,6 +100,10 @@ fn is_disallowed_ip(ip: &IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_multicast()
                 || v4.is_unspecified()
+                // 0.0.0.0/8 "this network". `is_unspecified()` only matches the
+                // single address 0.0.0.0, but Linux routes the whole /8 to the
+                // local host, so 0.0.0.1 was reaching loopback through the gap.
+                || o[0] == 0
                 // 100.64.0.0/10 CGNAT
                 || (o[0] == 100 && (o[1] & 0xC0) == 0x40)
                 // 192.0.0.0/24 IETF protocol assignments
@@ -66,10 +116,48 @@ fn is_disallowed_ip(ip: &IpAddr) -> bool {
                 || (o[0] == 203 && o[1] == 0 && o[2] == 113)
         }
         IpAddr::V6(v6) => {
+            let seg = v6.segments();
+
+            // Unwrap every encoding that can carry an IPv4 address inside an
+            // IPv6 one and re-test it as IPv4. Previously only ::ffff:0:0/96
+            // (`to_ipv4_mapped`) was unwrapped, so `::127.0.0.1`,
+            // `2002:7f00:1::` and `64:ff9b::7f00:1` all named loopback or
+            // RFC1918 space and passed the check.
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_disallowed_ip(&IpAddr::V4(mapped));
             }
-            let seg = v6.segments();
+            // ::a.b.c.d — deprecated IPv4-compatible form. Anything in ::/96
+            // other than the unspecified and loopback addresses themselves.
+            if seg[0..6].iter().all(|&s| s == 0) && !(seg[6] == 0 && seg[7] <= 1) {
+                let embedded = std::net::Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xFF) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xFF) as u8,
+                );
+                return is_disallowed_ip(&IpAddr::V4(embedded));
+            }
+            // 2002::/16 — 6to4 embeds the IPv4 address in the next 32 bits.
+            if seg[0] == 0x2002 {
+                let embedded = std::net::Ipv4Addr::new(
+                    (seg[1] >> 8) as u8,
+                    (seg[1] & 0xFF) as u8,
+                    (seg[2] >> 8) as u8,
+                    (seg[2] & 0xFF) as u8,
+                );
+                return is_disallowed_ip(&IpAddr::V4(embedded));
+            }
+            // 64:ff9b::/96 and 64:ff9b:1::/48 — NAT64 well-known prefixes.
+            if seg[0] == 0x0064 && seg[1] == 0xff9b {
+                let embedded = std::net::Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xFF) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xFF) as u8,
+                );
+                return is_disallowed_ip(&IpAddr::V4(embedded));
+            }
+
             v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
@@ -235,9 +323,36 @@ async fn cache_notification_icon(
     let builder = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (compatible; PrinnyNotificationIcon/1.0)");
 
-    let client = if is_homeserver_media {
-        // Trusted destination (the user's chosen homeserver — which may legitimately
-        // live on a LAN/private IP), so skip the private-address guard here.
+    // The private-address guard may only be skipped for a homeserver origin the
+    // application itself recorded at startup — never for one named in this
+    // call's arguments.
+    //
+    // Both `url` and `homeserver` come from the webview, so the old test
+    // ("is `homeserver` the same origin as `url`?") was satisfiable by any
+    // caller: passing a matching pair for 127.0.0.1 disabled the guard outright
+    // and turned this command into an internal-port scanner whose distinct error
+    // strings reported whether the port was open. Comparing against state that
+    // the caller cannot choose per-invocation is what makes the check mean
+    // something. When no origin has been registered yet, the guard applies —
+    // fail closed.
+    let trusted_homeserver_origin = app
+        .state::<HomeserverOrigin>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let skip_private_guard = match (&trusted_homeserver_origin, parsed.host_str()) {
+        (Some(origin), Some(_)) => reqwest::Url::parse(origin).is_ok_and(|hs| {
+            hs.scheme() == parsed.scheme()
+                && hs.host_str() == parsed.host_str()
+                && hs.port_or_known_default() == parsed.port_or_known_default()
+        }),
+        _ => false,
+    };
+
+    let client = if skip_private_guard {
+        // The user's chosen homeserver, recorded by the app at startup, which
+        // may legitimately live on a LAN address.
         builder.build().map_err(|e| format!("client: {e}"))?
     } else {
         let host = parsed
@@ -268,7 +383,22 @@ async fn cache_notification_icon(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(';').next())
         .map(|s| s.trim().to_ascii_lowercase());
-    let bytes = resp.bytes().await.map_err(|e| format!("bytes: {e}"))?;
+
+    // Stream with a hard cap instead of buffering the whole body. The URL here
+    // is a homeserver media URL for an avatar chosen by a remote user, so
+    // without a bound a sender could pick the number of bytes this process
+    // allocates and then writes into the app cache directory — zero-click, just
+    // by messaging the victim.
+    let mut resp = resp;
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("bytes: {e}"))? {
+        if bytes.len() + chunk.len() > MEDIA_FETCH_MAX_BYTES {
+            return Err(format!(
+                "icon exceeds {MEDIA_FETCH_MAX_BYTES} byte limit"
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
 
     let ext = match content_type.as_deref() {
         Some("image/jpeg") | Some("image/jpg") | Some("image/pjpeg") => "jpg",
@@ -327,41 +457,81 @@ async fn fetch_remote_bytes(url: String) -> Result<tauri::ipc::Response, String>
     let port = parsed.port_or_known_default().unwrap_or(443);
     let addrs = resolve_public_addrs(&host, port).await?;
 
-    let client = reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
-        )
-        // Pin the vetted address so reqwest can't re-resolve to a rebound
-        // internal IP between our check and the request.
-        .resolve(&host, addrs[0])
-        // Only follow redirects that stay within the media allowlist; a 3xx to
-        // any other host is stopped (the caller gets the 3xx and errors out)
-        // so a redirect can't be used to reach an internal host.
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            match attempt.url().host_str() {
-                Some(h) if host_allowed_media(h) => {
-                    if attempt.previous().len() >= 10 {
-                        attempt.error("too many redirects")
-                    } else {
-                        attempt.follow()
-                    }
-                }
-                _ => attempt.stop(),
+    // Redirects are disabled and re-vetted by hand, exactly as fetch_og_preview
+    // does. The previous policy accepted a hop on hostname alone: the new host
+    // was matched against the media allowlist but never resolved and checked
+    // against is_disallowed_ip, and the DNS pin only ever covered the original
+    // host, so reqwest was free to re-resolve the redirect target to anything.
+    let mut current = parsed.clone();
+    let mut current_addrs = addrs;
+    let mut current_host = host;
+    for _hop in 0..10u8 {
+        let client = reqwest::Client::builder()
+            .user_agent(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+                 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            )
+            // Pin the vetted address so reqwest can't re-resolve to a rebound
+            // internal IP between our check and the request.
+            .resolve(&current_host, current_addrs[0])
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("client: {e}"))?;
+        let resp = client
+            .get(current.as_str())
+            .send()
+            .await
+            .map_err(|e| format!("send: {e}"))?;
+
+        let status = resp.status();
+        if status.is_redirection() {
+            let loc = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "redirect without location".to_string())?;
+            let next = current
+                .join(loc)
+                .map_err(|e| format!("bad redirect target: {e}"))?;
+            match next.scheme() {
+                "http" | "https" => {}
+                other => return Err(format!("scheme not allowed: {other}")),
             }
-        }))
-        .build()
-        .map_err(|e| format!("client: {e}"))?;
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("send: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+            let next_host = next
+                .host_str()
+                .ok_or_else(|| "redirect target has no host".to_string())?
+                .to_string();
+            if !host_allowed_media(&next_host) {
+                return Err(format!("redirect host not allowed: {next_host}"));
+            }
+            let next_port = next.port_or_known_default().unwrap_or(443);
+            // Re-vet and re-pin every hop, not just the first.
+            current_addrs = resolve_public_addrs(&next_host, next_port).await?;
+            current_host = next_host;
+            current = next;
+            continue;
+        }
+
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+
+        // Cap the body. This proxies remote media chosen by message content, so
+        // an unbounded read let a sender decide how much memory the native
+        // process allocates.
+        let mut resp = resp;
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| format!("body: {e}"))? {
+            if buf.len() + chunk.len() > MEDIA_FETCH_MAX_BYTES {
+                return Err(format!(
+                    "response exceeds {MEDIA_FETCH_MAX_BYTES} byte limit"
+                ));
+            }
+            buf.extend_from_slice(&chunk);
+        }
+        return Ok(tauri::ipc::Response::new(buf));
     }
-    let bytes = resp.bytes().await.map_err(|e| format!("bytes: {e}"))?;
-    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+    Err("too many redirects".to_string())
 }
 
 // Maximum bytes read from an OG-preview target. OG/meta tags live in <head>,
@@ -651,10 +821,24 @@ async fn read_dropped_file(
         .map_err(|e| format!("canonicalize {}: {}", path, e))?;
 
     {
-        let set = state.0.lock().map_err(|_| "drop-state poisoned".to_string())?;
-        if !(set.contains(&canon) || set.contains(&requested)) {
+        // Consume the authorisation: a drop authorises exactly one read, not an
+        // indefinite licence. The set was previously never pruned, so any path
+        // the user had ever dropped stayed readable by page script for the whole
+        // process lifetime — including after the file's contents changed.
+        let mut set = state.0.lock().map_err(|_| "drop-state poisoned".to_string())?;
+        let authorised = set.remove(&canon) | set.remove(&requested);
+        if !authorised {
             return Err("path was not part of a drag-drop onto the window".to_string());
         }
+    }
+
+    // Bound the read. `std::fs::read` on a caller-named path had no size limit,
+    // so a single dropped file could be pulled into memory in full.
+    let metadata = std::fs::metadata(&canon).map_err(|e| format!("stat {}: {}", path, e))?;
+    if metadata.len() > DROPPED_FILE_MAX_BYTES as u64 {
+        return Err(format!(
+            "file exceeds {DROPPED_FILE_MAX_BYTES} byte limit"
+        ));
     }
 
     let name = canon
@@ -802,9 +986,44 @@ pub fn run() {
     }
 
     let port: u16 = 44548;
+
+    // Refuse to start if anything else already owns the frontend port.
+    //
+    // In release builds the main webview loads http://localhost:44548, and the
+    // capability files (capabilities/migrated.json, capabilities/desktop.json)
+    // grant this application's native permissions to that exact origin. So
+    // whoever answers on that port is handed the clipboard, an unrestricted HTTP
+    // client, dialog-mediated file access, process control and the updater.
+    //
+    // tauri-plugin-localhost starts its listener inside `std::thread::spawn` and
+    // `expect`s the bind, so a panic there kills only that thread: the process
+    // carries on and the webview cheerfully renders whatever the squatter
+    // serves. Loopback ports are not partitioned per user on Linux or Windows,
+    // so a second local user — or any process that started earlier — can take
+    // it. Binding here first turns that silent takeover into a loud failure.
+    //
+    // The port stays fixed rather than ephemeral because capability `remote.urls`
+    // entries are static strings resolved at build time; an ephemeral port could
+    // not be named there, and the page would end up with no capabilities at all.
+    #[cfg(not(debug_assertions))]
+    {
+        match std::net::TcpListener::bind(("127.0.0.1", port)) {
+            Ok(probe) => drop(probe),
+            Err(e) => {
+                eprintln!(
+                    "[prinny] FATAL: 127.0.0.1:{port} is already in use ({e}). The application \
+                     frontend is served on this port and holds native capabilities, so refusing \
+                     to start rather than load content from another process."
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
     let context = tauri::generate_context!();
     let mut builder = tauri::Builder::default()
         .manage(DroppedPaths::default())
+        .manage(HomeserverOrigin::default())
         // Record the real OS paths from each native drag-drop so that
         // `read_dropped_file` will only read files the user actually dropped.
         // Observer-only (returns unit), so it never interferes with the
@@ -829,6 +1048,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             set_badge_count,
+            set_homeserver_origin,
             cache_notification_icon,
             read_dropped_file,
             fetch_remote_bytes,
@@ -898,9 +1118,29 @@ pub fn run() {
 
             window_builder
                 .on_new_window(move |url, _features| {
-                    // blob: URLs are internal to the webview, skip external open
-                    if url.scheme() != "blob" {
-                        let _ = app_handle.opener().open_url(url.as_str(), None::<&str>);
+                    // Only http(s) is handed to the operating system.
+                    //
+                    // `OpenerExt::open_url` called from Rust bypasses the
+                    // capability system entirely, so the `opener:allow-open-url`
+                    // scope in capabilities/migrated.json — which restricts the
+                    // IPC command to http/https — does NOT constrain this call.
+                    // Testing only for `blob` meant any other scheme reaching
+                    // here was dispatched to whatever local application is
+                    // registered for it: `file:` and UNC targets (an outbound
+                    // SMB authentication on Windows), and application protocol
+                    // handlers. The frontend reaches this with URLs chosen by a
+                    // homeserver and by message senders, so the allowlist has to
+                    // live here rather than upstream of it.
+                    match url.scheme() {
+                        "http" | "https" => {
+                            let _ = app_handle.opener().open_url(url.as_str(), None::<&str>);
+                        }
+                        // blob: URLs are internal to the webview; the frontend
+                        // turns those into downloads itself.
+                        "blob" => {}
+                        other => {
+                            eprintln!("[prinny] refused to open URL with scheme {other:?}");
+                        }
                     }
                     NewWindowResponse::Deny
                 })

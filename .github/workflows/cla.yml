@@ -5,6 +5,28 @@ on:
   pull_request_target:
     types: [opened, closed, synchronize]
 
+# `pull_request_target` and `issue_comment` are both triggerable by anyone who
+# can open a PR or leave a comment, and they run with a token against the BASE
+# repo — so the token scope is the blast radius. Explicit least privilege:
+#
+#   contents: read       — the action's README says contents may be `read` when
+#                          the signatures file lives in a remote repository,
+#                          which it does here (remote-organization-name /
+#                          remote-repository-name below). Those writes go
+#                          through CLA_PAT, not GITHUB_TOKEN, so the workflow
+#                          token never needs write on this repo.
+#   pull-requests: write — the bot's "please sign the CLA" comment on the PR.
+#   actions: read        — after everyone has signed the action looks up its own
+#                          workflow and the branch's runs to decide whether the
+#                          failed CLA check needs re-running. Read is enough to
+#                          keep the job green; the re-run itself needs a PAT
+#                          anyway (see the action's pullRerunRunner source), so
+#                          `actions: write` is deliberately NOT granted.
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
 jobs:
   CLAssistant:
     runs-on: ubuntu-latest
@@ -15,7 +37,11 @@ jobs:
         uses: cla-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # the below token should have repo scope and must be manually added by you in the repository's secret
+          # CLA_PAT must be scoped to the SIGNATURES REPOSITORY ONLY
+          # (cinnyapp/cla — contents: write on that one repo, nothing else).
+          # A classic PAT with blanket `repo` scope hands every repository the
+          # token owner can reach to a workflow that outsiders can trigger via
+          # pull_request_target / issue_comment. Use a fine-grained PAT.
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_PAT }}
         with:
           path-to-signatures: 'signatures.json'

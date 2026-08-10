@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Scoped to the public Downloads directory only. The single FileProvider
-  consumer is UpdateChecker.kt, which writes the update APK to
-  getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)/cinny-v<version>.apk
-  and exposes it via getUriForFile() for the install intent. The previous
-  path="." entries exposed the entire external-storage and cache roots, which
-  is far broader than needed.
+  Scoped to the app-private external files Download directory only. The single
+  FileProvider consumer is UpdateChecker.kt, which stages the update APK at
+  getExternalFilesDir(DIRECTORY_DOWNLOADS)/cinny-v<version>.apk and exposes it
+  via getUriForFile() for the install intent.
+
+  <external-files-path> roots at getExternalFilesDir(null)
+  (Android/data/<pkg>/files), so path="Download/" resolves to exactly that
+  staging dir and nothing else. It replaces the previous
+  <external-path path="Download/"> entry, which pointed at the SHARED public
+  Downloads folder — world-writable by any app with storage access, and with a
+  fully predictable filename, so another app could plant or swap the APK we
+  then asked the package installer to install. Earlier still, path="." entries
+  exposed the entire external-storage and cache roots.
 -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-  <external-path name="apk_downloads" path="Download/" />
+  <external-files-path name="apk_downloads" path="Download/" />
 </paths>

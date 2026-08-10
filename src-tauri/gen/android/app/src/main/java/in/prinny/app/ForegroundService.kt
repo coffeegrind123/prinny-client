@@ -45,6 +45,16 @@ class ForegroundService : Service() {
         @Volatile
         var microphoneActive: Boolean = false
 
+        // Page JS (CallEmbedProvider) flips this on when a call embed mounts —
+        // which happens BEFORE the widget asks for capture. It is only a
+        // request: it never enables the microphone service type by itself.
+        // ForegroundServicePlugin applies it if capture is already authorized,
+        // otherwise MainActivity applies it at the moment it grants audio
+        // capture to an allowed origin. If no grant ever happens, the mic
+        // service type is never advertised.
+        @Volatile
+        var microphoneRequested: Boolean = false
+
         fun startWithForeground(service: ForegroundService) {
             try {
                 val typeBitmask = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -67,6 +77,13 @@ class ForegroundService : Service() {
          * Toggle whether the foreground service advertises microphone use.
          * Called from JS when an Element Call is joined / left so the mic
          * stays accessible when the app is backgrounded mid-call.
+         *
+         * SECURITY: enabling this is what allows capture to continue while
+         * backgrounded, so it is NOT open to arbitrary page JS. The only
+         * caller, ForegroundServicePlugin.setMicrophoneActive, refuses
+         * `active = true` unless MainActivity actually granted audio capture
+         * to an allowed origin and RECORD_AUDIO is still held. Any new caller
+         * must apply the same gate; `active = false` is always safe.
          */
         fun setMicrophoneActive(context: Context, active: Boolean) {
             microphoneActive = active

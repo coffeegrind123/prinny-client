@@ -16,9 +16,11 @@ import `in`.prinny.app.BuildConfig
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
+import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 /**
  * Polls release.json on app start, decides whether to download a newer
@@ -54,6 +56,19 @@ class UpdateChecker(private val context: Context) {
         private const val PREFS = "prinny_updater"
         private const val KEY_LAST_DL_ID = "last_download_id"
         private const val KEY_LAST_DL_VERSION = "last_download_version"
+
+        // The digest release.json advertised for the APK we staged. Persisted
+        // next to the version so the launch-time "APK already on disk" path can
+        // verify the file too — without it, a re-launch would install whatever
+        // bytes are sitting at the staging path.
+        private const val KEY_LAST_DL_SHA256 = "last_download_sha256"
+
+        // The only hosts we will hand to DownloadManager. release.json is
+        // fetched over the network, so a tampered/served-wrong release.json
+        // must not be able to redirect the updater at an arbitrary APK. GitHub
+        // serves release assets from github.com and redirects to
+        // objects.githubusercontent.com.
+        private val ALLOWED_APK_HOSTS = setOf("github.com", "objects.githubusercontent.com")
 
         // Process-lifetime guard: we re-prompt at most once per cold start
         // when an already-downloaded APK is sitting on disk. Without this
@@ -112,6 +127,16 @@ class UpdateChecker(private val context: Context) {
                         Log.d(TAG, "APK already on disk and we've already prompted this session — skipping")
                         return@Thread
                     }
+                    // Never install a staged file on trust. Prefer the digest we
+                    // just fetched; fall back to the one recorded when we staged
+                    // the file. No digest at all = refuse (verifyApk deletes it),
+                    // so the next check re-downloads from a verified source.
+                    val expected = sha256.ifEmpty { storedSha256(latestVersion) }
+                    if (!verifyApk(existing, expected)) {
+                        Log.e(TAG, "Staged APK for v$latestVersion failed SHA-256 verification — not prompting")
+                        forgetStagedDownload()
+                        return@Thread
+                    }
                     Log.i(TAG, "APK already on disk: ${existing.absolutePath}, prompting install")
                     promptedThisSession = true
                     promptInstall(existing)
@@ -167,14 +192,25 @@ class UpdateChecker(private val context: Context) {
         return false
     }
 
-    private fun apkFile(version: String): File =
-        File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "cinny-v$version.apk"
-        )
+    private fun apkName(version: String): String = "cinny-v$version.apk"
+
+    /**
+     * Staging directory for the update APK: app-private external storage
+     * (`Android/data/<pkg>/files/Download`), NOT the shared public Downloads
+     * folder. The public folder is writable by any app holding storage access,
+     * and the filename is entirely predictable (`cinny-v<version>.apk`), so
+     * another app could plant or swap the APK between download and install.
+     * The app-private dir is not reachable by other apps' file access.
+     */
+    private fun apkDir(): File? = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+
+    private fun apkFile(version: String): File? {
+        val dir = apkDir() ?: return null
+        return File(dir, apkName(version))
+    }
 
     private fun existingApk(version: String): File? {
-        val file = apkFile(version)
+        val file = apkFile(version) ?: return null
         return if (file.exists() && file.length() > 0) file else null
     }
 
@@ -184,13 +220,86 @@ class UpdateChecker(private val context: Context) {
         // do nothing.
         val prevVersion = prefs.getString(KEY_LAST_DL_VERSION, null) ?: return
         if (prevVersion == currentLatestVersion) return
-        val stale = apkFile(prevVersion)
+        val stale = apkFile(prevVersion) ?: return
         if (stale.exists()) {
             if (stale.delete()) {
                 Log.i(TAG, "Cleaned up stale APK: ${stale.absolutePath}")
-                prefs.edit().remove(KEY_LAST_DL_VERSION).remove(KEY_LAST_DL_ID).apply()
+                forgetStagedDownload()
             }
         }
+    }
+
+    private fun storedSha256(version: String): String {
+        // The digest is only meaningful for the version we actually staged.
+        if (prefs.getString(KEY_LAST_DL_VERSION, null) != version) return ""
+        return prefs.getString(KEY_LAST_DL_SHA256, "") ?: ""
+    }
+
+    private fun forgetStagedDownload() {
+        prefs.edit()
+            .remove(KEY_LAST_DL_VERSION)
+            .remove(KEY_LAST_DL_ID)
+            .remove(KEY_LAST_DL_SHA256)
+            .apply()
+    }
+
+    /**
+     * Integrity gate for every install path. release.json publishes a `sha256`
+     * for the Android APK; until this existed it was parsed and thrown away, so
+     * the updater would install whatever bytes were at the staging path —
+     * a truncated download, a MITM'd body, or a file planted by another app.
+     *
+     * Compares case-insensitively (release.json digests are lowercase hex, but
+     * hand-edited ones may not be). On ANY failure — no digest available,
+     * unreadable file, mismatch — the file is deleted and we return false so
+     * the caller does not prompt; the next check re-downloads it.
+     */
+    private fun verifyApk(file: File, expectedSha256: String?): Boolean {
+        val expected = expectedSha256?.trim().orEmpty()
+        if (expected.isEmpty()) {
+            Log.e(TAG, "No expected SHA-256 available for ${file.name} — refusing to install")
+            file.delete()
+            return false
+        }
+
+        val actual = try {
+            sha256Of(file)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to hash ${file.absolutePath} — refusing to install", e)
+            file.delete()
+            return false
+        }
+
+        if (!actual.equals(expected, ignoreCase = true)) {
+            Log.e(
+                TAG,
+                "SHA-256 mismatch for ${file.name}: expected=$expected actual=$actual — deleting"
+            )
+            file.delete()
+            return false
+        }
+
+        Log.i(TAG, "SHA-256 verified for ${file.name}")
+        return true
+    }
+
+    private fun sha256Of(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+        }
+        val out = StringBuilder(64)
+        for (b in digest.digest()) {
+            val v = b.toInt() and 0xFF
+            if (v < 0x10) out.append('0')
+            out.append(Integer.toHexString(v))
+        }
+        return out.toString()
     }
 
     /**
@@ -223,16 +332,43 @@ class UpdateChecker(private val context: Context) {
     }
 
     private fun downloadApk(url: String, version: String, sha256: String) {
+        // Validate the URL before it reaches DownloadManager. Without this,
+        // whatever `url` release.json carries is fetched verbatim — plain http
+        // (swappable in flight) or an attacker-controlled host both worked.
+        val parsed = Uri.parse(url)
+        val host = parsed.host?.lowercase() ?: ""
+        if (parsed.scheme != "https" || host !in ALLOWED_APK_HOSTS) {
+            Log.e(TAG, "Refusing update download from untrusted URL: $url")
+            return
+        }
+
+        // Without a published digest we could never verify the result, so the
+        // download would be staged only to be deleted at install time. Bail early.
+        if (sha256.isBlank()) {
+            Log.e(TAG, "release.json has no sha256 for v$version — refusing to download")
+            return
+        }
+
         val file = apkFile(version)
+        if (file == null) {
+            Log.w(TAG, "App-private external storage unavailable — skipping update download")
+            return
+        }
         // Stale partial leftover from a killed download — clear it so the
         // new enqueue lands on a clean path.
         if (file.exists() && file.length() == 0L) file.delete()
 
-        val request = DownloadManager.Request(Uri.parse(url))
+        val request = DownloadManager.Request(parsed)
             .setTitle("Cinny v$version")
             .setDescription("Downloading update...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "cinny-v$version.apk")
+            // App-private external files dir — see apkDir(). The public
+            // Downloads folder let any storage-capable app swap the APK.
+            .setDestinationInExternalFilesDir(
+                context,
+                Environment.DIRECTORY_DOWNLOADS,
+                apkName(version)
+            )
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
             // MIME type so the system associates the file with the package
@@ -244,13 +380,16 @@ class UpdateChecker(private val context: Context) {
         prefs.edit()
             .putLong(KEY_LAST_DL_ID, id)
             .putString(KEY_LAST_DL_VERSION, version)
+            // Persist the expected digest so a cold start can verify the staged
+            // file even though release.json isn't re-read at that point.
+            .putString(KEY_LAST_DL_SHA256, sha256)
             .apply()
-        Log.i(TAG, "Download queued: cinny-v$version.apk (id=$id)")
+        Log.i(TAG, "Download queued: ${apkName(version)} (id=$id)")
 
-        registerCompletionReceiver(id, version)
+        registerCompletionReceiver(id, version, sha256)
     }
 
-    private fun registerCompletionReceiver(downloadId: Long, version: String) {
+    private fun registerCompletionReceiver(downloadId: Long, version: String, sha256: String) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val received =
@@ -274,8 +413,17 @@ class UpdateChecker(private val context: Context) {
                         return
                     }
                     val file = apkFile(version)
-                    if (!file.exists() || file.length() == 0L) {
+                    if (file == null || !file.exists() || file.length() == 0L) {
                         Log.w(TAG, "Download reported success but file missing: $file")
+                        return
+                    }
+                    // Integrity gate: a successful DownloadManager status only
+                    // means bytes arrived, not that they're the bytes the
+                    // release published. Verify before handing the file to the
+                    // package installer.
+                    if (!verifyApk(file, sha256)) {
+                        Log.e(TAG, "Downloaded APK for v$version failed SHA-256 verification — not installing")
+                        forgetStagedDownload()
                         return
                     }
                     // Fresh-download path — always prompt. Also mark the
@@ -292,17 +440,27 @@ class UpdateChecker(private val context: Context) {
 
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         // Android 14 (API 34) requires explicit export flags on dynamic
-        // receivers. ACTION_DOWNLOAD_COMPLETE is sent by the system, so
-        // we need RECEIVER_EXPORTED. The flag constant exists from Tiramisu
+        // receivers. NOT_EXPORTED: ACTION_DOWNLOAD_COMPLETE is delivered by the
+        // system directly to the app that enqueued the download, so the
+        // receiver never needs to accept broadcasts from other apps. Exported,
+        // any app could fire the action with a guessed EXTRA_DOWNLOAD_ID and
+        // drive us into the install path. The download-id equality check above
+        // stays as a second gate. The flag constant exists from Tiramisu
         // (API 33) onwards; older targets ignore it.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, filter)
         }
     }
 
+    /**
+     * Callers MUST have run [verifyApk] on `apk` first — this hands the file to
+     * the package installer, so an unverified file installs unverified code.
+     * The FileProvider only exposes the app-private staging dir (see
+     * res/xml/file_paths.xml `external-files-path`).
+     */
     private fun promptInstall(apk: File) {
         val authority = "${context.packageName}.fileprovider"
         val uri: Uri = try {

@@ -1,5 +1,6 @@
 {
   "identifier": "desktop-capability",
+  "description": "Desktop-only permissions granted to the bundled frontend origin. Keep this list to what the frontend actually calls: this capability is granted to the remote origin below, so anything listed here is reachable by whatever executes script in the page.",
   "local": true,
   "remote": {
     "urls": [
@@ -28,12 +29,6 @@
     "core:tray:allow-set-tooltip",
     "core:tray:allow-set-show-menu-on-left-click",
     "core:menu:default",
-    "core:app:allow-default-window-icon",
-    "global-shortcut:default",
-    "global-shortcut:allow-is-registered",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-register-all",
-    "global-shortcut:allow-unregister",
-    "global-shortcut:allow-unregister-all"
+    "core:app:allow-default-window-icon"
   ]
 }

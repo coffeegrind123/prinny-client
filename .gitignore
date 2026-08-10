@@ -8,7 +8,10 @@ devAssets
 # Android build artifacts (don't commit 119MB APKs or signing keys)
 *.apk
 *.apk.idsig
-debug.keystore
+# ALL keystores, not just debug.keystore — a release keystore
+# (prinny-ci.keystore) was committed to this public repo once already.
+*.keystore
+*.jks
 
 # Tauri updater minisign keypair + password — NEVER commit
 .secrets/

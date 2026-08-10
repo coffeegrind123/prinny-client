@@ -10,6 +10,14 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default for every job in this file. Jobs that genuinely need
+# more (create-release, the platform builds, archive, release-update) declare
+# their own `permissions:` block, which replaces this one wholesale — so the
+# read-only jobs (typecheck, macos-check, security-audit) can no longer inherit
+# whatever the repository default token scope happens to be.
+permissions:
+  contents: read
+
 jobs:
   # ── Type check (hard gate for the entire pipeline) ───────────────
   # `vite build` strips types without checking them and nothing else ran tsc,
@@ -34,7 +42,7 @@ jobs:
       # how this went unnoticed locally.
       - name: Install cinny deps
         working-directory: cinny
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: tsc --noEmit
         working-directory: cinny
@@ -53,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -139,8 +147,8 @@ jobs:
         # download/<file>` keeps resolving to the previous release for
         # the whole build window (~45 min while Android cross-compiles)
         # instead of 404'ing on whichever platform hasn't finished yet.
-        # Old versioned releases are deleted in release-update AFTER the
-        # new one is fully assembled and flipped to published.
+        # release-update flips it to published once every platform build
+        # has uploaded. Prior releases are kept (see release-update).
         id: create
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -181,34 +189,26 @@ jobs:
         with:
           node-version: 20
 
-      # Hard gate: no CRITICAL-severity vulnerabilities in SHIPPED (production)
-      # deps. `high` is advisory-only below because cinny ships lodash@4.17.21
-      # transitively via slate — the open lodash advisories have no patched
-      # release upstream, so a `high` gate would be permanently red.
-      - name: "npm audit — root production deps (gate: critical)"
-        run: npm audit --omit=dev --audit-level=critical
+      # Hard gate: no HIGH- or CRITICAL-severity vulnerabilities in SHIPPED
+      # (production) deps. This used to gate on `critical` only, with `high`
+      # downgraded to an advisory step because of transitive lodash advisories.
+      # An advisory nobody can fail on is not a gate — if a `high` here is
+      # genuinely unfixable upstream, suppress that ONE advisory explicitly
+      # (npm audit's allow-list / a pinned override) rather than blinding the
+      # whole gate to an entire severity class.
+      - name: "npm audit — root production deps (gate: high)"
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: "npm audit — cinny production deps (gate: critical)"
+      - name: "npm audit — cinny production deps (gate: high)"
         working-directory: cinny
-        run: npm audit --omit=dev --audit-level=critical
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: "npm audit — high severity (advisory, non-blocking)"
-        continue-on-error: true
+      # Rust deps via RustSec — also a real gate. `|| true` on the install line
+      # meant a failed `cargo install` reported success and the audit never ran.
+      - name: cargo audit (gate)
         run: |
-          echo "::group::root"
-          npm audit --omit=dev --audit-level=high || true
-          echo "::endgroup::"
-          echo "::group::cinny"
-          (cd cinny && npm audit --omit=dev --audit-level=high) || true
-          echo "::endgroup::"
-
-      # Advisory: Rust deps via RustSec. Non-blocking so an unfixable transitive
-      # advisory can't wedge the release pipeline.
-      - name: cargo audit (advisory, non-blocking)
-        continue-on-error: true
-        run: |
-          cargo install cargo-audit --locked || true
-          cargo audit --file src-tauri/Cargo.lock || true
+          cargo install cargo-audit --locked
+          cargo audit --file src-tauri/Cargo.lock
 
   # ── Windows x86_64 ──────────────────────────────────────────────
   windows-x86_64:
@@ -232,12 +232,12 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
 
       - name: Install cinny dependencies
-        run: cd cinny && npm ci
+        run: cd cinny && npm ci --ignore-scripts
       - name: Install tauri dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Bump version
         run: node scripts/bump-version.mjs
@@ -313,16 +313,16 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
 
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Install cinny dependencies
-        run: cd cinny && npm ci
+        run: cd cinny && npm ci --ignore-scripts
       - name: Install tauri dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Bump version
         run: node scripts/bump-version.mjs
@@ -395,14 +395,14 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install cinny dependencies
-        run: cd cinny && npm ci
+        run: cd cinny && npm ci --ignore-scripts
       - name: Install tauri dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Bump version
         run: node scripts/bump-version.mjs
@@ -472,7 +472,7 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           targets: >-
             aarch64-linux-android,
@@ -485,9 +485,9 @@ jobs:
           packages: platforms;android-36 build-tools;35.0.0 ndk;27.0.12077973
 
       - name: Install cinny dependencies
-        run: cd cinny && npm ci
+        run: cd cinny && npm ci --ignore-scripts
       - name: Install tauri dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Bump version
         run: node scripts/bump-version.mjs
@@ -504,35 +504,50 @@ jobs:
       # the installed app). The APK downloaded fine but could never install
       # over the previous one. A persistent key fixes update continuity.
       #
-      # Default: the committed `prinny-ci.keystore` (a debug-grade key, same
-      # security posture as the old debug.keystore — fine for self-distribution
-      # over HTTPS GitHub releases). To harden, set the ANDROID_KEYSTORE_BASE64
-      # / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS secrets and they win.
-      # Rotating the key forces existing users to reinstall once.
+      # The signing key comes from repo secrets ONLY. There used to be a
+      # fallback to a `prinny-ci.keystore` committed to this PUBLIC repo, with
+      # the store/key password hardcoded right here — i.e. anyone could sign an
+      # APK that Android would accept as an in-place update of the installed
+      # app. That key is permanently compromised (it is still in git history and
+      # in every already-published release) and the fallback is gone. If the
+      # secrets are missing this job FAILS: no APK at all beats an APK signed
+      # with a key everybody has.
+      #
+      # Set: ANDROID_KEYSTORE_BASE64 (`base64 -w0 your.keystore`),
+      #      ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS.
+      # Rotating the key forces existing Android users through one manual
+      # reinstall (Android refuses an update signed by a different key).
       - name: Sign APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "Signing with keystore from ANDROID_KEYSTORE_BASE64 secret"
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > ci-signing.keystore
-            KS_PASS="$ANDROID_KEYSTORE_PASSWORD"
-            KS_ALIAS="${ANDROID_KEY_ALIAS:-prinny}"
-          else
-            echo "Signing with committed prinny-ci.keystore (stable key)"
-            cp prinny-ci.keystore ci-signing.keystore
-            KS_PASS="prinny-updater"
-            KS_ALIAS="prinny"
+          set -eu
+          MISSING=""
+          [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] || MISSING="$MISSING ANDROID_KEYSTORE_BASE64"
+          [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] || MISSING="$MISSING ANDROID_KEYSTORE_PASSWORD"
+          [ -n "${ANDROID_KEY_ALIAS:-}" ] || MISSING="$MISSING ANDROID_KEY_ALIAS"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Android release signing secret(s) not set:$MISSING — refusing to build an unsigned or insecurely-signed APK. Configure the repository secrets and re-run."
+            exit 1
           fi
-          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
-            --ks ci-signing.keystore --ks-pass "pass:$KS_PASS" \
-            --ks-key-alias "$KS_ALIAS" --key-pass "pass:$KS_PASS" \
+
+          # Remove the decoded keystore on EVERY exit path, including a failed
+          # apksigner run (the old unconditional `rm` after the sign command was
+          # unreachable on failure, leaving the private key on the runner).
+          trap 'rm -f ci-signing.keystore' EXIT
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > ci-signing.keystore
+          # env: form, not pass: — a `pass:` argument is visible to every other
+          # process on the runner via the process table.
+          export KS_PASS="$ANDROID_KEYSTORE_PASSWORD"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks ci-signing.keystore --ks-pass env:KS_PASS \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" --key-pass env:KS_PASS \
             --out prinny-android-universal.apk \
             src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
-          rm -f ci-signing.keystore
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose prinny-android-universal.apk | head -5
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose prinny-android-universal.apk | head -5
           sha256sum prinny-android-universal.apk > prinny-android-universal.apk.sha256
 
       - name: Upload artifacts
@@ -585,7 +600,7 @@ jobs:
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
         run: |
-          npm ci
+          npm ci --ignore-scripts
           node scripts/rebrand.mjs
           npm run build
       - name: Zip dist
@@ -596,6 +611,13 @@ jobs:
         run: |
           cd cinny
           zip -r ../prinny-webapp.zip dist
+          # Integrity control for self-hosters: the desktop artifacts ship a
+          # minisign `.sig`, the APK ships a `.sha256` — this zip shipped
+          # nothing, so a tampered asset was undetectable. Same pattern as the
+          # android job.
+          cd ..
+          sha256sum prinny-webapp.zip > prinny-webapp.zip.sha256
+          cat prinny-webapp.zip.sha256
       - name: Upload to release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
@@ -603,6 +625,7 @@ jobs:
           draft: true
           files: |
             prinny-webapp.zip
+            prinny-webapp.zip.sha256
 
   # ── Source archive ──────────────────────────────────────────────
   archive:
@@ -616,10 +639,18 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+          # This job zips the whole checkout into a PUBLISHED release asset.
+          # actions/checkout otherwise persists the GITHUB_TOKEN in
+          # .git/config as an http.extraheader, so the token would be packaged
+          # into a world-readable zip. Belt and braces with the -x below.
+          persist-credentials: false
       - name: Create source zip
         run: |
           cd ..
-          zip ${{ github.event.repository.name }}/${{ github.event.repository.name }}-${{ needs.create-release.outputs.tag }}.zip ${{ github.event.repository.name }} -r
+          # Exclude git metadata: .git holds credentials (see above), and the
+          # archive is meant to be a source snapshot, not a repo clone.
+          zip ${{ github.event.repository.name }}/${{ github.event.repository.name }}-${{ needs.create-release.outputs.tag }}.zip ${{ github.event.repository.name }} -r \
+            -x '*/.git/*' '*/.git'
       - name: Upload to release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
@@ -650,33 +681,41 @@ jobs:
           gh release edit "$TAG" --draft=false
           echo "Published $TAG"
 
-      - name: Delete old versioned releases
-        # Moved here (was in create-release) so the previous release
-        # stays "latest" until the new one is fully assembled. Now we
-        # can safely wipe old releases.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_TAG: ${{ needs.create-release.outputs.tag }}
-        run: |
-          gh api "repos/${{ github.repository }}/releases" \
-            --jq '.[] | select(.tag_name | startswith("v")) | select(.tag_name != $ENV.CURRENT_TAG) | .id' \
-            | while read id; do
-              echo "Deleting old release $id"
-              gh api -X DELETE "repos/${{ github.repository }}/releases/$id" --silent
-            done
+      # Old versioned releases are NO LONGER deleted here.
+      #
+      # Retention decision: the deletion was not load-bearing. `release.json`
+      # is generated by scripts/release.mjs, which resolves the newest `v*`
+      # git TAG (repos.listTags) and then fetches that one release by tag —
+      # deleting a release does not delete its tag, and nothing in the updater
+      # path enumerates releases. So wiping history bought tidiness only, and
+      # cost the exact evidence a supply-chain incident needs: the published
+      # assets, their digests and their upload timestamps for every prior
+      # version. Without them you cannot tell a tampered artifact from a
+      # legitimate one after the fact, and users on an older version lose their
+      # download. Keeping the releases is the security-relevant choice.
+      #
+      # If disk/clutter ever becomes a real problem, prune by AGE (keep at
+      # least a year) instead of keeping only the current tag.
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Generate release.json
         run: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Purge old workflow runs
+        # Retention raised 20 -> 200. Twenty completed runs is a few days of
+        # pushes; run logs are the audit trail (who triggered a build, which
+        # SHA, which secrets were used) that an incident investigation depends
+        # on, and `actions: write` here means the pipeline can erase its own
+        # tracks. 200 keeps months of history while still bounding growth.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          KEEP=20
-          gh run list --workflow=build.yml --status=completed --json databaseId,status --jq '.[].databaseId' \
+          KEEP=200
+          # --limit is required: `gh run list` returns only 20 rows by default,
+          # which with KEEP=200 would silently purge nothing at all.
+          gh run list --workflow=build.yml --status=completed --limit 400 --json databaseId,status --jq '.[].databaseId' \
             | tail -n +$((KEEP + 1)) \
             | while read id; do
               echo "Deleting run $id"

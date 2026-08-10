@@ -8,6 +8,19 @@ async function getAssetSign(url) {
     },
   });
 
+  // Without this check an HTTP error body ("Not Found", an S3 XML error, a
+  // rate-limit page) is returned as if it were the signature/digest, gets
+  // written into release.json, and every client then fails minisign
+  // verification ("Invalid encoding in minisign data") — or, for Android,
+  // compares its APK against a digest that was never a digest. Fail loudly
+  // here instead: the caller's Promise.allSettled leaves the field unset, the
+  // emit() guard drops the platform, and the updater simply reports no update.
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download ${url}: HTTP ${response.status} ${response.statusText}`
+    );
+  }
+
   return response.text();
 }
 
@@ -70,11 +83,23 @@ async function createTauriRelease() {
     }
     if (/prinny-android-universal\.apk\.sha256$/.test(name)) {
       const sha256Text = await getAssetSign(browser_download_url);
-      android.sha256 = sha256Text.split(/\s+/)[0];
+      const digest = sha256Text.split(/\s+/)[0];
+      // `sha256sum` output is "<64 hex>  <filename>". Anything else (an error
+      // page that still returned 200, a truncated download) is not a digest
+      // and must not reach the client that verifies against it.
+      if (!/^[0-9a-f]{64}$/i.test(digest)) {
+        throw new Error(`Malformed sha256 for ${name}: ${JSON.stringify(digest.slice(0, 80))}`);
+      }
+      android.sha256 = digest.toLowerCase();
     }
   });
 
-  await Promise.allSettled(promises);
+  const settled = await Promise.allSettled(promises);
+  for (const result of settled) {
+    if (result.status === "rejected") {
+      console.error(`Asset fetch failed: ${result.reason?.message ?? result.reason}`);
+    }
+  }
 
   const releaseData = {
     version: latestTag.name,
@@ -102,8 +127,15 @@ async function createTauriRelease() {
   emit('darwin-x86_64', darwinUniversal);
   emit('darwin-aarch64', darwinUniversal);
 
-  if (android.url) {
+  // Android mirrors the desktop emit() guard: BOTH the APK url and its sha256
+  // must be present. The client (UpdateChecker.kt) verifies the digest of the
+  // downloaded APK, so an entry with a url and no sha256 either fails the
+  // update or — worse, if a client ever treated a missing digest as "nothing
+  // to check" — installs an unverified APK. No digest, no update offer.
+  if (android.url && android.sha256) {
     releaseData.android = android;
+  } else if (android.url) {
+    console.log('Android APK found but no .sha256 digest — skipping android entry');
   } else {
     console.log('No android artifact');
   }

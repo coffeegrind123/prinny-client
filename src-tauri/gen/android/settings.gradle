@@ -7,6 +7,18 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        // JitPack builds artifacts straight from GitHub sources and publishes
+        // them unverified, so it must never be a general-purpose repository:
+        // Gradle queries repositories in order, but any group JitPack can
+        // answer for is a group a compromised JitPack could substitute. The
+        // content filter restricts it to the single group we actually pull from
+        // it (com.github.UnifiedPush:android-connector, see app/build.gradle.kts);
+        // everything else resolves from google()/mavenCentral() only.
+        maven {
+            url 'https://jitpack.io'
+            content {
+                includeGroupByRegex('com\\.github\\.UnifiedPush.*')
+            }
+        }
     }
 }

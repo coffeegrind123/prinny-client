@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Replaces the blanket android:usesCleartextTraffic="true", which permitted
+  plain HTTP to ANY host in release builds — homeserver traffic, media
+  downloads and OIDC redirects included, all downgradable/readable by anyone on
+  the path.
+
+  Base config: cleartext denied everywhere. The only exception is loopback,
+  because the app genuinely needs it: tauri-plugin-localhost serves the bundled
+  frontend over http://localhost:44548 (src-tauri/src/lib.rs) and that traffic
+  never leaves the device.
+
+  If a Matrix homeserver discovery/auth flow now fails with
+  ERR_CLEARTEXT_NOT_PERMITTED, the correct fix is an https endpoint — not
+  re-opening cleartext for the whole app.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

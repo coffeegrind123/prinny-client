@@ -40,6 +40,14 @@ jobs:
             echo "::error::Failed to resolve cinny desktop-notifications HEAD"
             exit 1
           fi
+          # This value comes from a remote we do not control and is fed straight
+          # into `git update-index --cacheinfo` below. Anything that is not a
+          # bare 40-hex object id (multiple refs matched, an error line, shell
+          # metacharacters) must not get that far.
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::cinny HEAD is not a 40-hex SHA: '$SHA'"
+            exit 1
+          fi
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "short=${SHA:0:8}" >> "$GITHUB_OUTPUT"
           echo "Latest cinny SHA: $SHA"
@@ -50,6 +58,11 @@ jobs:
           NEW_SHORT: ${{ steps.cinny.outputs.short }}
         run: |
           set -euo pipefail
+          # Re-validate: the value crossed a step boundary via GITHUB_OUTPUT.
+          if ! printf '%s' "$NEW_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Refusing to bump: NEW_SHA is not a 40-hex SHA: '$NEW_SHA'"
+            exit 1
+          fi
           OLD_SHA=$(git ls-tree HEAD -- cinny | awk '{print $3}')
           OLD_SHORT="${OLD_SHA:0:8}"
           if [ "$NEW_SHA" = "$OLD_SHA" ]; then
@@ -60,7 +73,7 @@ jobs:
 
           # Update the submodule's gitlink without checking out the worktree.
           # Mode 160000 is git's special marker for submodule entries.
-          git update-index --cacheinfo 160000,$NEW_SHA,cinny
+          git update-index --cacheinfo "160000,$NEW_SHA,cinny"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
