@@ -68,6 +68,19 @@ replaceInFile(
   `version = "${version}"`
 );
 
+// src-tauri/Cargo.lock — the workspace member's own entry. Cargo.toml alone is
+// not enough: a lock that still carries the previous version makes any
+// `--locked` / `--frozen` build fail outright, and a normal build silently
+// rewrites the lock and leaves CI with a dirty tree. Upstream fixes this by
+// shelling out to `cargo update --workspace` (cinny-desktop 0660885); we patch
+// the entry directly instead so this stays offline-safe — bump-version runs in
+// every platform job, including the Android one, before cargo is warmed up.
+replaceInFile(
+  join(ROOT, 'src-tauri', 'Cargo.lock'),
+  /\[\[package\]\]\nname = "cinny"\nversion = "[^"]+"/,
+  `[[package]]\nname = "cinny"\nversion = "${version}"`
+);
+
 // Root package.json
 replaceInFile(
   join(ROOT, 'package.json'),
