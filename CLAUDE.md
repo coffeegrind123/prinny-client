@@ -32,21 +32,25 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 - Inline `code` spans with backticks render as styled inline tokens in the viewer; everything else is plain text.
 - Use both prinny-client and cinny submodule commit SHAs as appropriate — the viewer links them all to the cinny commit page by default, which is fine for cross-linking either repo via GitHub's prefix lookup.
 
-**Workflow:**
+**Workflow — two commits, never `--amend`:**
 ```bash
-# After making changes in cinny submodule:
+# 1. Commit the CODE on its own, with no changelog edit in it.
 cd cinny
-vim CHANGELOG.md      # add bullet(s) under today's section (or create one)
 git add -A && git commit -m "<short msg>"
-git push origin desktop-notifications
+SHA=$(git rev-parse --short=7 HEAD)      # the SHA the bullets must cite
 
-# Use the actual commit SHA in the changelog bullet — git records the SHA at
-# commit time, so amend the changelog entry AFTER the commit if needed:
-SHA=$(git rev-parse --short=7 HEAD)
-sed -i "s/<placeholder>/$SHA/" CHANGELOG.md   # replace your placeholder
-git commit --amend --no-edit
-git push --force-with-lease origin desktop-notifications
+# 2. Commit the CHANGELOG separately, citing that SHA.
+vim CHANGELOG.md                          # bullets start with `$SHA`
+git add CHANGELOG.md && git commit -m "Changelog for $SHA"
+git push origin desktop-notifications
 ```
+
+> **Do not fill the SHA in with `git commit --amend`.** Amending rewrites the
+> commit, so the SHA you just read no longer exists — every bullet citing it
+> 404s in the in-app changelog viewer, which links each SHA to GitHub. The
+> changelog bullet must live in a *later* commit than the code it describes.
+> This is why a code commit and its changelog commit always come in pairs
+> (e.g. `c0b94a6` + `d93bda7`).
 
 For prinny-client-only commits (e.g. workflow edits, CLAUDE.md), bullet them in `cinny/CHANGELOG.md` too — the user-facing changelog is single-source for both repos. Update the cinny submodule pointer in the same prinny-client commit.
 
