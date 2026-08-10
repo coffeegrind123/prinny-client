@@ -11,8 +11,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Type check (hard gate for the entire pipeline) ───────────────
+  # `vite build` strips types without checking them and nothing else ran tsc,
+  # so the frontend accumulated 133 type errors unnoticed — several of which
+  # were real runtime bugs (see cinny commit 66fe288d). create-release depends
+  # on this job, and every platform build depends on create-release, so a
+  # broken tree cannot reach a release.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: cinny/.node-version
+
+      # `npm ci` and not `npm install`: only a clean install resolves the
+      # lockfile's actual @types. A node_modules grown by successive installs
+      # keeps stale ones hoisted and reports a false pass — that is precisely
+      # how this went unnoticed locally.
+      - name: Install cinny deps
+        working-directory: cinny
+        run: npm ci
+
+      - name: tsc --noEmit
+        working-directory: cinny
+        run: npm run typecheck
+
   # ── Auto-create release (main push auto-versions, tag push uses tag) ──
   create-release:
+    needs: [typecheck]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
