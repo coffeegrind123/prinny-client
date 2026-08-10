@@ -213,14 +213,39 @@ Android has no upstream counterpart at all.
    failed build looks like a pass. Redirect to a file and check the real status,
    or use `${PIPESTATUS[0]}`.
 
-`cargo check` needs GTK dev headers, which a fresh container lacks:
+### Checking Rust per target from the container
+
+A fresh container can't `cargo check` anything until you install the deps:
 
 ```bash
+# Linux (native) target — GTK/WebKit dev headers
 apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+cd src-tauri && cargo check
+
+# Windows target — needs the mingw toolchain for tauri-winres' windres
+apt-get install -y mingw-w64
+cd src-tauri && cargo check --target x86_64-pc-windows-gnu
 ```
 
-Neither the Windows nor the macOS target can be checked from the container
-(missing mingw `windres` / Apple SDK) — platform-gated code is CI's first real test.
+**macOS cannot be checked here, and don't burn time trying.** `ring`,
+`objc2-exception-helper` and friends compile C against a real Apple SDK, so
+`cargo check --target *-apple-darwin` dies in `cc-rs` regardless of the Rust
+side. Stubbing one offender just moves the failure to the next. Anything under
+`#[cfg(target_os = "macos")]` is therefore verified by the **`macos-check` job
+in build.yml**, which gates `create-release` — treat a red there as the real
+answer.
+
+**`cargo check` needs `cinny/dist` to exist** — `tauri::generate_context!`
+resolves `frontendDist` at compile time. If you haven't built the frontend, a
+placeholder is enough for a Rust-only check (that's what `macos-check` does):
+
+```bash
+mkdir -p cinny/dist && echo '<!doctype html>' > cinny/dist/index.html
+```
+
+**Never judge a check by a piped exit code** — `cargo check … | tail -20`
+reports *tail's* status, so a failed build reads as a pass. Redirect to a file,
+or use `${PIPESTATUS[0]}`.
 
 ## Critical: working directory
 

@@ -69,18 +69,21 @@ Range: `24d34c7..upstream/main` (`5c57861`) — 27 commits.
 - **Skipped:** 23 commits (8 release stamps, 6 upstream-only CI, 5 updater/tooling N/A, 2 docs, 2 lockfile maintenance)
 - **Verified:** `cargo check` clean on `x86_64-unknown-linux-gnu`; `tauri.conf.json` parses
 
-### Not verified by this sync
+### Verification
 
-- The **macOS** branch (`0f08c3a`) is `#[cfg(target_os = "macos")]`, so `cargo check`
-  on Linux compiles it out, and cross-checking against `x86_64-apple-darwin` fails in
-  the dev container (`objc2-exception-helper` needs a real Apple SDK). What *was*
-  checked statically, against `tauri-2.11.5` source: `TitleBarStyle` is exported
-  unconditionally from `tauri`, `WebviewWindowBuilder::title_bar_style(self, TitleBarStyle) -> Self`
-  exists under `#[cfg(target_os = "macos")]`, and the `Transparent` variant exists in
-  `tauri-utils`. First macOS CI run is the real check.
-- The **Windows** target can't be checked here either — `cargo check --target
-  x86_64-pc-windows-gnu` panics in `tauri-winres` because `x86_64-w64-mingw32-windres`
-  isn't installed in the container. The changed code is not Windows-specific.
+- **Linux** — `cargo check` clean (needs the GTK/WebKit dev headers listed in CLAUDE.md).
+- **Windows** — `cargo check --target x86_64-pc-windows-gnu` clean, after
+  `apt-get install mingw-w64` (the earlier failure was a missing
+  `x86_64-w64-mingw32-windres`, not a code problem).
+- **macOS** — still not checkable from the container, and not for want of trying:
+  `objc2-exception-helper` and `ring` both compile C against a real Apple SDK, so
+  stubbing the first offender just moves the failure to the next. Verified instead by
+  the **`macos-check` job** added to `build.yml`, which runs `cargo check` for both
+  Apple targets on `macos-latest` and gates `create-release` — so macOS-only code can
+  no longer reach a release uncompiled. What was additionally confirmed statically
+  against `tauri-2.11.5` source: `TitleBarStyle` is exported unconditionally from
+  `tauri`, `WebviewWindowBuilder::title_bar_style(self, TitleBarStyle) -> Self` exists
+  under `#[cfg(target_os = "macos")]`, and `Transparent` is a real variant.
 
 ## Do NOT do a `-X ours` SHA-sync merge in this repo
 

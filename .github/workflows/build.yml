@@ -40,9 +40,48 @@ jobs:
         working-directory: cinny
         run: npm run typecheck
 
+  # ── Rust compile check for Apple targets (hard gate) ─────────────
+  # Anything behind `#[cfg(target_os = "macos")]` is invisible to a Linux or
+  # Windows `cargo check`, and it cannot be cross-checked off a Mac either —
+  # ring, objc2-exception-helper and friends compile C against a real Apple
+  # SDK. So macOS-only code used to reach a release having never been compiled
+  # by anyone. This runs cheaply (no bundling, no npm) and gates the pipeline,
+  # so a macOS-only compile error fails in minutes instead of surfacing halfway
+  # through six platform builds.
+  macos-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@bc2d2e71bd35c5549942babaa51a89c586b981d1 # v2.8.1
+        with:
+          workspaces: src-tauri
+
+      # tauri::generate_context! resolves frontendDist at compile time and fails
+      # if ../cinny/dist is missing, so a Rust-only check still needs something
+      # there. A placeholder keeps this job free of the submodule checkout and a
+      # full npm ci + vite build — the assets are irrelevant to type and borrow
+      # checking, which is all this job exists to do.
+      - name: Placeholder frontendDist
+        run: |
+          mkdir -p cinny/dist
+          echo '<!doctype html><title>placeholder</title>' > cinny/dist/index.html
+
+      - name: cargo check (aarch64-apple-darwin)
+        working-directory: src-tauri
+        run: cargo check --target aarch64-apple-darwin
+
+      - name: cargo check (x86_64-apple-darwin)
+        working-directory: src-tauri
+        run: cargo check --target x86_64-apple-darwin
+
   # ── Auto-create release (main push auto-versions, tag push uses tag) ──
   create-release:
-    needs: [typecheck]
+    needs: [typecheck, macos-check]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
