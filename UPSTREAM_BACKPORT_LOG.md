@@ -82,6 +82,33 @@ Range: `24d34c7..upstream/main` (`5c57861`) — 27 commits.
   x86_64-pc-windows-gnu` panics in `tauri-winres` because `x86_64-w64-mingw32-windres`
   isn't installed in the container. The changed code is not Windows-specific.
 
+## Do NOT do a `-X ours` SHA-sync merge in this repo
+
+The submodule clears its "N commits behind" badge with
+`git merge upstream/dev -X ours` after each sync. **That does not transfer here** —
+it was attempted this sync and aborted. `-X ours` only decides *conflicting*
+hunks; non-conflicting upstream hunks still apply, and in this repo they land in
+`src-tauri/src/lib.rs`, `Cargo.toml` and `Cargo.lock` — precisely where we diverge.
+The trial merge produced:
+
+- **A duplicate updater registration.** Upstream's `#[cfg(feature = "updater")]`
+  plugin block merged in *alongside* our `#[cfg(not(mobile))]` one — both active on
+  desktop, registering `tauri-plugin-updater` twice.
+- **Upstream's blocking-dialog update check** re-added to `setup()`, on top of our
+  frontend-driven updater — two update prompts.
+- **`tauri-plugin-updater` made `optional = true`** behind a new cargo feature,
+  while our unconditional `#[cfg(not(mobile))]` block still references it — doesn't
+  compile without the feature.
+- **The window builder re-broken** the same way the `0f08c3a` cherry-pick was
+  (stray `;`, duplicated macOS line) — doesn't compile either.
+- **`src-tauri/gen/schemas/macOS-schema.json` deleted** (7093 lines) and
+  modify/delete conflicts on four more schema files we track for the Android build.
+- **`Cargo.lock` reverted** to upstream's dependency set (1529 lines).
+
+So this repo **stays showing as behind on GitHub**, by choice. The badge is
+cosmetic; this log is the real record of what was and wasn't taken. Re-evaluate
+only if the updater and CI subsystems ever converge with upstream again.
+
 ## Process (reference for future syncs)
 
 ```bash
