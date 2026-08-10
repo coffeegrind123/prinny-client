@@ -85,18 +85,24 @@ Range: `24d34c7..upstream/main` (`5c57861`) — 27 commits.
   `tauri`, `WebviewWindowBuilder::title_bar_style(self, TitleBarStyle) -> Self` exists
   under `#[cfg(target_os = "macos")]`, and `Transparent` is a real variant.
 
-## Do NOT do a `-X ours` SHA-sync merge in this repo
+## Clearing the "N commits behind" badge: `-s ours`, never `-X ours`
 
-The submodule clears its "N commits behind" badge with
-`git merge upstream/dev -X ours` after each sync. **That does not transfer here** —
-it was attempted this sync and aborted. `-X ours` only decides *conflicting*
-hunks; non-conflicting upstream hunks still apply, and in this repo they land in
-`src-tauri/src/lib.rs`, `Cargo.toml` and `Cargo.lock` — precisely where we diverge.
-The trial merge produced:
+Use the **merge strategy** `ours`, which keeps this tree byte for byte:
+
+```bash
+git merge -s ours upstream/main -m "Merge upstream/main @ <sha> — backports already applied"
+```
+
+Do **not** use `-X ours`. That is the *recursive* strategy's conflict
+preference: it only decides conflicting hunks and still applies every
+non-conflicting upstream hunk. In the submodule that is harmless (the churn
+lands in CI configs and package files). Here it is not — our divergence lives in
+exactly the files it wants to touch. It was tried during the 2026-08-10 sync and
+abandoned, having produced:
 
 - **A duplicate updater registration.** Upstream's `#[cfg(feature = "updater")]`
-  plugin block merged in *alongside* our `#[cfg(not(mobile))]` one — both active on
-  desktop, registering `tauri-plugin-updater` twice.
+  plugin block merged in *alongside* our `#[cfg(not(mobile))]` one — both active
+  on desktop, registering `tauri-plugin-updater` twice.
 - **Upstream's blocking-dialog update check** re-added to `setup()`, on top of our
   frontend-driven updater — two update prompts.
 - **`tauri-plugin-updater` made `optional = true`** behind a new cargo feature,
@@ -108,9 +114,14 @@ The trial merge produced:
   modify/delete conflicts on four more schema files we track for the Android build.
 - **`Cargo.lock` reverted** to upstream's dependency set (1529 lines).
 
-So this repo **stays showing as behind on GitHub**, by choice. The badge is
-cosmetic; this log is the real record of what was and wasn't taken. Re-evaluate
-only if the updater and CI subsystems ever converge with upstream again.
+`-s ours` avoids all of it by design — it records the ancestry and discards
+upstream's content wholesale, which is correct precisely because this log is the
+record of what was taken.
+
+**The one thing it costs:** git now treats those commits as merged, so a future
+`git merge upstream/main` will not re-offer changes to files we skipped. That is
+free here — syncs are driven by the START HERE marker below and applied with
+`cherry-pick`, never by merge. The submodule works the same way.
 
 ## Process (reference for future syncs)
 
