@@ -14,5 +14,17 @@
   "lockFileMaintenance": {
     "enabled": true
   },
-  "dependencyDashboard": true
+  "dependencyDashboard": true,
+  "npm": {
+    "description": "DISABLED 2026-08-11 — owned by Dependabot (.github/dependabot.yml). Renovate is not installed on this repository and Issues are disabled, so the dependency dashboard that `:dependencyDashboardApproval` gates every update behind cannot be created. Re-enabling this means removing the npm ecosystem from dependabot.yml in the same change; never run both on one manifest.",
+    "enabled": false
+  },
+  "cargo": {
+    "description": "DISABLED 2026-08-11 — owned by Dependabot, same reason as npm.",
+    "enabled": false
+  },
+  "github-actions": {
+    "description": "DISABLED 2026-08-11 — owned by Dependabot, same reason as npm.",
+    "enabled": false
+  }
 }

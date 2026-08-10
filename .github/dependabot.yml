@@ -1,15 +1,31 @@
 # Docs: <https://docs.github.com/en/code-security/supply-chain-security/keeping-your-dependencies-updated-automatically/customizing-dependency-updates>
+#
+# Dependabot owns EVERY ecosystem here. The npm and cargo entries below were
+# commented out, and `.github/renovate.json` was written on the assumption that
+# Renovate would cover npm instead. It does not: Renovate is not installed on
+# this repository (no Renovate PRs, no Renovate branches), and Issues are
+# disabled, so the dependency dashboard its config gates every npm update behind
+# cannot exist. The result was that nothing watched dependencies at all — which
+# is how 22 npm advisories (10 high, including arbitrary JS execution from a
+# malicious PDF) and four Rust advisories accumulated unnoticed.
+#
+# Note that this file governs *version* updates only. Dependabot *security*
+# updates are a repository setting; both alerts and automated security fixes
+# were switched on for this repo and for coffeegrind123/cinny on 2026-08-11.
+#
+# If Renovate is ever actually installed, disable one of the two for npm before
+# it opens competing PRs on the same manifest — never both at once.
 
 version: 2
 updates:
-#   - package-ecosystem: npm
-#     directory: /
-#     schedule:
-#       interval: weekly
-#       day: "tuesday"
-#       time: "01:00"
-#       timezone: "Asia/Kolkata"
-#     open-pull-requests-limit: 15
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: "tuesday"
+      time: "01:00"
+      timezone: "Europe/Helsinki"
+    open-pull-requests-limit: 10
 
   - package-ecosystem: github-actions
     directory: /
@@ -17,14 +33,17 @@ updates:
       interval: weekly
       day: "tuesday"
       time: "01:00"
-      timezone: "Asia/Kolkata"
+      timezone: "Europe/Helsinki"
     open-pull-requests-limit: 5
 
-#   - package-ecosystem: cargo
-#     directory: /src-tauri/
-#     schedule:
-#       interval: weekly
-#       day: "tuesday"
-#       time: "01:00"
-#       timezone: "Asia/Kolkata"
-#     open-pull-requests-limit: 5
+  # cargo audit found real advisories in this tree (rustls-webpki certificate
+  # path validation, quinn-proto remote memory exhaustion). It is gated in CI,
+  # so a bump nobody proposes is a red build nobody can fix.
+  - package-ecosystem: cargo
+    directory: /src-tauri/
+    schedule:
+      interval: weekly
+      day: "tuesday"
+      time: "01:00"
+      timezone: "Europe/Helsinki"
+    open-pull-requests-limit: 5

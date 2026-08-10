@@ -205,10 +205,35 @@ jobs:
 
       # Rust deps via RustSec — also a real gate. `|| true` on the install line
       # meant a failed `cargo install` reported success and the audit never ran.
+      #
+      # Two advisories are ignored, individually and with reasons, rather than
+      # lowering the gate (see the npm note above — same rule).
+      #
+      # RUSTSEC-2026-0194 (quadratic duplicate-attribute check) and
+      # RUSTSEC-2026-0195 (unbounded namespace-declaration allocation in
+      # `NsReader`) are both quick-xml DoS advisories fixed in 0.41.0. Two
+      # versions remain in the tree and NEITHER can be updated from here:
+      #   * 0.38.4 <- plist 1.8.0 <- tauri 2.10.3 itself (`quick-xml = "^0.38"`)
+      #   * 0.37.5 <- tauri-winrt-notification 0.7.2   (`quick-xml = "^0.37"`)
+      # `cargo update --precise 0.41.0` fails on both requirements.
+      #
+      # Checked for reachability rather than assumed:
+      #   * tauri-winrt-notification uses ONLY `quick_xml::escape::escape`
+      #     (9 call sites, no reader at all) to build Windows toast XML.
+      #   * plist reads XML with `quick_xml::Reader`, not `NsReader`, and the
+      #     only thing tauri parses with it is our own bundle's Info.plist —
+      #     not remote input.
+      # Neither advisory is reachable with attacker-controlled input here.
+      #
+      # REMOVE THESE IGNORES when tauri bumps plist, or plist/
+      # tauri-winrt-notification move to quick-xml 0.41 — re-run without them
+      # first and only re-add what still fires.
       - name: cargo audit (gate)
         run: |
           cargo install cargo-audit --locked
-          cargo audit --file src-tauri/Cargo.lock
+          cargo audit --file src-tauri/Cargo.lock \
+            --ignore RUSTSEC-2026-0194 \
+            --ignore RUSTSEC-2026-0195
 
   # ── Windows x86_64 ──────────────────────────────────────────────
   windows-x86_64:

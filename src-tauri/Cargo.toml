@@ -20,15 +20,17 @@ serde = { version = "1.0.193", features = ["derive"] }
 tauri = { version = "2", features = [ "devtools", "tray-icon"] }
 tauri-plugin-localhost = "2"
 tauri-plugin-window-state = "2"
-tauri-plugin-clipboard-manager = "2"
+# Only the plugins the frontend actually calls are compiled in. clipboard-manager,
+# fs, shell, http and dialog were registered here but granted no permission in any
+# capability file and called from neither Rust nor the frontend — dead IPC surface
+# in every shipped binary. Removing them also drops the whole
+# arboard -> wl-clipboard-rs -> wayland-client -> wayland-scanner -> quick-xml
+# chain, which is what pinned quick-xml to a version with two DoS advisories
+# (RUSTSEC-2026-0194/0195) that no patch release of 0.39 fixes.
 tauri-plugin-notification = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
-tauri-plugin-http = "2"
 tauri-plugin-mobile-push = "0.1"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
-tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
