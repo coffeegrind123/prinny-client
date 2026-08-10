@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{webview::{NewWindowResponse, WebviewWindowBuilder}, Manager, WebviewUrl};
+#[cfg(target_os = "macos")]
+use tauri::TitleBarStyle;
 use tauri_plugin_opener::OpenerExt;
 
 mod taskbar;
@@ -879,6 +881,13 @@ pub fn run() {
             #[cfg(not(mobile))]
             {
                 window_builder = window_builder.inner_size(800.0, 800.0);
+            }
+
+            // Transparent titlebar on macOS — the default is a permanently
+            // white bar that ignores the app theme.
+            #[cfg(target_os = "macos")]
+            {
+                window_builder = window_builder.title_bar_style(TitleBarStyle::Transparent);
             }
 
             // Keep Tauri's native drag-drop handler enabled. WebView2 (Windows)
