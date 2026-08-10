@@ -177,6 +177,51 @@ git commit -m "Update cinny submodule"
 | `src/app/features/room/Room.tsx` | Our MobileSwipeBack import vs upstream's call embed imports |
 | `package-lock.json` | We have extra deps (tauri-plugin-mobile-push-api etc.) not in upstream |
 
+## Upstream sync (this repo — the Tauri shell)
+
+This repo is a fork of `cinnyapp/cinny-desktop`. Same idea as the submodule sync
+above, different tracking file: **`UPSTREAM_BACKPORT_LOG.md`** at the repo root,
+with its own **START HERE** marker.
+
+```bash
+git remote add upstream https://github.com/cinnyapp/cinny-desktop.git   # one-time
+git fetch upstream
+git log --oneline <START-HERE-sha>..upstream/main --reverse
+```
+
+Expect to skip most of it. Three subsystems are ours outright and have no
+upstream counterpart, so upstream commits touching their equivalents are **not
+applicable**, not merely noisy — the log's "Why so much is skipped" table has the
+detail:
+
+- **CI/release** — we have `build.yml` + `auto-bump-cinny.yml` and
+  `scripts/bump-version.mjs`; upstream's `tauri.yml`/`tauri2.yml`/`archive.yml`/
+  `test.yml`/`update-version.mjs` don't exist here.
+- **Updater** — ours is frontend-driven; the Rust side only registers the plugin.
+  Upstream's Rust-side `check()` in `setup()` (and everything gatekeeping it) is N/A.
+- **Versioning** — independent 4.11.x line stamped from the release tag.
+
+Android has no upstream counterpart at all.
+
+**Two traps this sync paid for:**
+
+1. `git cherry-pick -n` only wraps *conflicting* hunks in markers. The rest of the
+   same region is auto-merged silently, so upstream's tail can land next to your
+   resolution and contradict it — that's how a `use of moved value` error got
+   committed. Grepping for `<<<<<<<` proves nothing. Re-read the whole region.
+2. `cargo check ... 2>&1 | tail -20` reports the **exit code of `tail`**, so a
+   failed build looks like a pass. Redirect to a file and check the real status,
+   or use `${PIPESTATUS[0]}`.
+
+`cargo check` needs GTK dev headers, which a fresh container lacks:
+
+```bash
+apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+```
+
+Neither the Windows nor the macOS target can be checked from the container
+(missing mingw `windres` / Apple SDK) — platform-gated code is CI's first real test.
+
 ## Critical: working directory
 
 **The Bash tool's CWD persists between commands.** After `cd cinny`, all subsequent Bash calls run from there. `npm run tauri` fails with "Missing script: tauri" because `cinny/package.json` doesn't have that script. Always verify `pwd` before build commands.
