@@ -5,10 +5,23 @@ on:
     branches: [main]
     tags:
       - 'v*'
+  # Escape hatch: a run that got skipped or died partway can be re-driven
+  # without inventing an empty commit just to trigger a release.
+  workflow_dispatch:
 
+# `cancel-in-progress: true` was wrong for this workflow, and it cost a release.
+# create-release drafts a GitHub release and the platform jobs upload assets
+# into it — side effects that a cancellation cannot undo. On 2026-08-11 two
+# pushes landed minutes apart: the second cancelled the first *after* it had
+# drafted v4.11.120 and uploaded three platforms, and then skipped every build
+# of its own because that release already existed. Neither commit ended up with
+# a complete release, and the draft was left missing its Android APK.
+#
+# Queue instead of cancel. A superseded build wastes runner minutes; a cancelled
+# one corrupts a release.
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # Least-privilege default for every job in this file. Jobs that genuinely need
 # more (create-release, the platform builds, archive, release-update) declare
@@ -103,19 +116,51 @@ jobs:
           fetch-depth: 0
           submodules: true  # need cinny/CHANGELOG.md for release notes
 
+      # The next version must be computed from tags AND releases, not tags alone.
+      # `gh release create --draft` deliberately defers creating the git tag
+      # until the release is published, so a drafted-but-unpublished version is
+      # invisible to `git tag`. Two runs in the same window therefore computed
+      # the SAME version, and the second one bailed out with created=false
+      # because the first one's draft already held that name — no build, no
+      # release, silently. Taking the max of both sources is what makes back-to-
+      # back pushes land on distinct versions.
       - name: Compute version
         id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "Auto-detected tag: ${{ github.ref_name }}"
           else
-            LATEST=$(git tag --sort=-v:refname | grep '^v' | head -1)
-            if [ -z "$LATEST" ]; then
+            LATEST_TAG=$(git tag --sort=-v:refname | grep '^v' | head -1 || true)
+            if [ -z "$LATEST_TAG" ]; then
               TAG="v4.11.1"
-            else
-              TAG=$(echo "$LATEST" | awk -F. '{print $1"."$2"."$NF+1}')
+              echo "tag=$TAG" >> $GITHUB_OUTPUT
+              echo "No existing tag — starting at $TAG"
+              exit 0
             fi
+            # --repo is explicit on purpose. Bare `gh release list` resolves the
+            # repository from the git remote of the working directory, and this
+            # checkout contains the cinny submodule — whose fork inherited
+            # upstream cinny's v4.12.x releases. Resolving against it instead of
+            # this repo yields a completely different, higher version line.
+            #
+            # Releases are also consulted ONLY within the current major.minor
+            # line, so a stray release outside it can never move the product off
+            # the 4.11.x line this fork versions on deliberately.
+            LINE="${LATEST_TAG%.*}"
+            LINE_RE="^$(printf '%s' "$LINE" | sed 's/\./\\./g')\."
+            # --limit is generous because `gh release list` sorts by date, not
+            # version, so the highest name has to be found locally. Drafts are
+            # included by default and are exactly what we are here for.
+            LATEST_REL=$(gh release list --repo "${{ github.repository }}" \
+              --limit 200 --json tagName --jq '.[].tagName' \
+              | grep -E "$LINE_RE" | sort -V -r | head -1 || true)
+            LATEST=$(printf '%s\n%s\n' "$LATEST_TAG" "$LATEST_REL" \
+              | grep '^v[0-9]' | sort -V -r | head -1)
+            echo "Line $LINE — latest tag: $LATEST_TAG · latest release incl. drafts: ${LATEST_REL:-none}"
+            TAG=$(echo "$LATEST" | awk -F. '{print $1"."$2"."$NF+1}')
             echo "tag=$TAG" >> $GITHUB_OUTPUT
             echo "Auto-bumped version: $LATEST -> $TAG"
           fi
