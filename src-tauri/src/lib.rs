@@ -784,6 +784,21 @@ fn set_badge_count(window: tauri::Window, count: u32) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // tauri-plugin-localhost serves the bundled frontend on 127.0.0.1:44548.
+    // A system/corporate HTTP proxy set via env would swallow that request and
+    // the window would come up blank, so make sure loopback is always excluded.
+    for key in ["NO_PROXY", "no_proxy"] {
+        let current_val = std::env::var(key).unwrap_or_default();
+        if !current_val.contains("localhost") {
+            let new_val = if current_val.is_empty() {
+                "localhost,127.0.0.1".to_string()
+            } else {
+                format!("{},localhost,127.0.0.1", current_val)
+            };
+            std::env::set_var(key, new_val);
+        }
+    }
+
     let port: u16 = 44548;
     let context = tauri::generate_context!();
     let mut builder = tauri::Builder::default()
