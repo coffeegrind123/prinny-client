@@ -4,7 +4,7 @@
 [![Latest](https://img.shields.io/github/v/release/coffeegrind123/prinny-client?label=latest)](https://github.com/coffeegrind123/prinny-client/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/coffeegrind123/prinny-client/total?label=downloads)](https://github.com/coffeegrind123/prinny-client/releases)
 
-A Matrix chat client that actually feels native. Prinny Client is [Cinny](https://cinny.in) packaged with [Tauri v2](https://v2.tauri.app), shipping on Windows, macOS, Linux, and Android. Hard fork of [cinnyapp/cinny-desktop](https://github.com/cinnyapp/cinny-desktop). The frontend lives at [coffeegrind123/cinny](https://github.com/coffeegrind123/cinny) on the `desktop-notifications` branch.
+A Matrix chat client that actually feels native. Prinny Client is [Cinny](https://cinny.in) packaged with [Tauri v2](https://v2.tauri.app), shipping on Windows, macOS, Linux, and Android. Hard fork of [cinnyapp/cinny-desktop](https://github.com/cinnyapp/cinny-desktop). The frontend lives at [coffeegrind123/cinny](https://github.com/coffeegrind123/cinny) on the `main` branch.
 
 ## Download
 
@@ -152,7 +152,7 @@ You need Rust, Node.js 16+, and platform dev tools. Clone with submodules:
 ```bash
 git clone --recursive https://github.com/coffeegrind123/prinny-client.git
 cd prinny-client
-cd cinny && git checkout desktop-notifications && npm ci && cd ..
+cd cinny && git checkout main && npm ci && cd ..
 npm ci
 ```
 

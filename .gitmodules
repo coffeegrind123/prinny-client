@@ -1,3 +1,7 @@
 [submodule "cinny"]
 	path = cinny
 	url = https://github.com/coffeegrind123/cinny.git
+	# Without this, `git submodule update --remote` tracks the remote's default
+	# branch instead of ours. That mismatch is what used to silently check out
+	# the wrong cinny commit.
+	branch = main

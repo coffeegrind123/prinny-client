@@ -4,7 +4,7 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 
 **Repos:**
 - Desktop shell: `coffeegrind123/prinny-client` (this repo)
-- Frontend (submodule): `coffeegrind123/cinny` branch `desktop-notifications`
+- Frontend (submodule): `coffeegrind123/cinny` branch `main`
 
 ## Changelog Rules
 
@@ -42,7 +42,7 @@ SHA=$(git rev-parse --short=7 HEAD)      # the SHA the bullets must cite
 # 2. Commit the CHANGELOG separately, citing that SHA.
 vim CHANGELOG.md                          # bullets start with `$SHA`
 git add CHANGELOG.md && git commit -m "Changelog for $SHA"
-git push origin desktop-notifications
+git push origin main
 ```
 
 > **Do not fill the SHA in with `git commit --amend`.** Amending rewrites the
@@ -71,7 +71,7 @@ After the release CI completes, the `release.json` on the `tauri` tag will inclu
 
 ## Webapp distribution (self-hosters)
 
-The cinny submodule auto-publishes a built copy of itself to the `webapp-release` orphan branch in `coffeegrind123/cinny` on every push to `desktop-notifications`. Self-hosters install with one clone and update with `git pull` — no `npm` needed at deploy time.
+The cinny submodule auto-publishes a built copy of itself to the `webapp-release` orphan branch in `coffeegrind123/cinny` on every push to `main`. Self-hosters install with one clone and update with `git pull` — no `npm` needed at deploy time.
 
 ```bash
 git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
@@ -81,7 +81,7 @@ git pull   # later, to update
 
 The workflow lives at `cinny/.github/workflows/publish-webapp.yml`. It runs `npm run build`, then commits the contents of `dist/` plus everything under `cinny/.github/webapp-release-template/` (README + nginx.conf) to `webapp-release` as a single linear commit per build. History stays linear, so `git pull` always fast-forwards.
 
-**Edits to the deploy-side files** (README, nginx.conf, install steps) are tracked in `cinny/.github/webapp-release-template/` on `desktop-notifications` and propagated on the next publish — never edit the `webapp-release` branch directly, it gets clobbered on every CI run.
+**Edits to the deploy-side files** (README, nginx.conf, install steps) are tracked in `cinny/.github/webapp-release-template/` on `main` and propagated on the next publish — never edit the `webapp-release` branch directly, it gets clobbered on every CI run.
 
 **First-run note:** The publish workflow creates `webapp-release` as an orphan branch on its first execution if it doesn't exist. No manual seeding required.
 
@@ -94,7 +94,7 @@ cd prinny-client
 # Ensure submodule is on our branch
 cd cinny
 git fetch origin
-git checkout desktop-notifications
+git checkout main
 npm ci
 cd ..
 
@@ -111,13 +111,13 @@ Output lands in `src-tauri/target/x86_64-pc-windows-gnu/release/`:
 
 ## Submodule setup
 
-The `cinny/` submodule points to `coffeegrind123/cinny` (not upstream `cinnyapp/cinny`). Our `desktop-notifications` branch contains the Tauri notification plugin integration, e2ee decryption handling, and message content formatting.
+The `cinny/` submodule points to `coffeegrind123/cinny` (not upstream `cinnyapp/cinny`). Our `main` branch contains the Tauri notification plugin integration, e2ee decryption handling, and message content formatting.
 
 ```bash
 # First time after clone:
 cd cinny
 git fetch origin
-git checkout desktop-notifications
+git checkout main
 npm ci
 cd ..
 
@@ -125,11 +125,11 @@ cd ..
 git add cinny && git commit -m "Update cinny submodule"
 ```
 
-**If git submodule update pulls the wrong commit:** It tracks `origin/dev` by default. Always explicitly checkout `desktop-notifications` in the submodule after `git submodule update --init`.
+**If git submodule update pulls the wrong commit:** It tracks `origin/dev` by default. Always explicitly checkout `main` in the submodule after `git submodule update --init`.
 
 ## Upstream sync (cinny submodule)
 
-The cinny submodule is a fork of `cinnyapp/cinny`. Periodically we cherry-pick upstream changes into our `desktop-notifications` branch.
+The cinny submodule is a fork of `cinnyapp/cinny`. Periodically we cherry-pick upstream changes into our `main` branch.
 
 **Tracking file:** `cinny/UPSTREAM_BACKPORT_LOG.md` — lists every upstream commit since our fork point with `[x]` (backported) / `[-]` (skipped as noise) / `[~]` (partial) status. The last entry marked **START HERE** tells you which SHA to start from on the next sync.
 
@@ -164,7 +164,7 @@ git log --oneline <last-synced-sha>..upstream/dev --reverse --no-merges
 # of every new commit. Move the START HERE marker to the last upstream commit.
 
 # Push
-git push origin desktop-notifications
+git push origin main
 
 # Then update the submodule pointer from the parent repo:
 cd /opt/openclaude-src/prinny-client
@@ -663,7 +663,7 @@ JS: sendNotification({title, body})
 
 6. **Notifications show encrypted payload in e2ee rooms.** `Timeline` event fires before decryption completes. `getContent()` returns encrypted blob. **Fix:** Check `mEvent.isEncrypted()`, wait for `MatrixEventEvent.Decrypted`, then send notification.
 
-7. **Submodule pulled wrong branch after `git submodule update --remote`.** Tracks `origin/dev` by default. **Fix:** Always explicitly `git checkout desktop-notifications` in the submodule.
+7. **Submodule pulled wrong branch after `git submodule update --remote`.** Tracks `origin/dev` by default. **Fix:** Always explicitly `git checkout main` in the submodule.
 
 ### Windows AppUserModelID
 
@@ -785,11 +785,11 @@ git commit -m "Remove YtDlpPlugin.kt (no longer referenced by lib.rs)"
 When you change files inside `cinny/src/`:
 
 ```bash
-# Step 1: Commit and push in the submodule (to the desktop-notifications branch)
+# Step 1: Commit and push in the submodule (to the main branch)
 cd /opt/openclaude-src/prinny-client/cinny
 git add -A
 git commit -m "Fix: describe your change"
-git push origin desktop-notifications
+git push origin main
 
 # Step 2: From the MAIN REPO ROOT, update the submodule pointer
 cd /opt/openclaude-src/prinny-client    # ← MUST be at repo root
