@@ -90,6 +90,7 @@ Everything below is what this fork adds on top of upstream [Cinny](https://cinny
 | Feature | Description |
 |---------|-------------|
 | System tray | Minimize to tray on close (`minimizeToTray` setting). Tray icon with Show/Quit menu |
+| Single instance | Only one copy ever runs. Launching again — shortcut, taskbar pin, Start menu — restores and focuses the existing window instead of starting a second client, including when it is hidden in the tray |
 | Taskbar badge | macOS Dock + Linux taskbar: native `set_badge_count()` red badge with unread count |
 | Windows taskbar overlays | `ITaskbarList3::SetOverlayIcon` with numbered 1-9 and 9+ ICO overlays |
 | Desktop updater | `tauri-plugin-updater` checks `release.json` on GitHub Releases |

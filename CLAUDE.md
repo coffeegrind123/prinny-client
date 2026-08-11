@@ -251,6 +251,41 @@ mkdir -p cinny/dist && echo '<!doctype html>' > cinny/dist/index.html
 reports *tail's* status, so a failed build reads as a pass. Redirect to a file,
 or use `${PIPESTATUS[0]}`.
 
+## Windows: single instance and the taskbar AppUserModelID
+
+Two Windows behaviours that look like one bug ("I keep ending up with several
+Prinnys, and the pinned icon opens yet another one"):
+
+**1. Duplicate processes.** Closing the window *hides* it when `minimizeToTray`
+is on (`cinny/src/app/hooks/useSystemTray.ts` calls `window.hide()` from
+`onCloseRequested`). A hidden app looks shut down, so every later click on the
+shortcut started another full copy — each with its own tray icon and its own
+Matrix sync. Fixed with `tauri-plugin-single-instance`, whose callback runs in
+the *first* instance and does `show()` → `unminimize()` → `set_focus()`.
+
+> **It must be the FIRST plugin in the builder chain.** A duplicate has to exit
+> before anything else initialises: `tauri-plugin-localhost` binds a TCP port,
+> and `tauri-plugin-window-state` writes saved geometry on exit, so a duplicate
+> that reaches either one fails to start or clobbers the live window's
+> position on its way out.
+
+**2. Two taskbar buttons.** Windows groups taskbar buttons by
+**AppUserModelID**. A process that never sets one gets a per-executable default
+that does not match the AUMID the NSIS installer stamped on the shortcut, so a
+pinned Prinny and a running Prinny were two separate buttons. `lib.rs` now calls
+`SetCurrentProcessExplicitAppUserModelID` with `context.config().identifier`
+(`in.prinny.app`) before any window exists.
+
+**The AUMID is shared with toasts — never let the two drift.** The Windows
+toast path (`send_windows_message_toast`) passes the same
+`app.config().identifier` to `Toast::new`, and Windows *silently drops* a toast
+whose AUMID does not match a registered shortcut. Changing the bundle
+identifier, or hardcoding a different string in either place, breaks
+notifications with no error message.
+
+Reuse the existing `context` when reading the identifier — `generate_context!()`
+embeds the entire frontend bundle, so calling it a second time is not free.
+
 ## `cinny/dist` carries a baked-in base path
 
 `build.config.ts` reads `PRINNY_BASE`, and Vite bakes that value into **every**

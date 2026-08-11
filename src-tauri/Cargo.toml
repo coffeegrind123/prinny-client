@@ -48,6 +48,10 @@ custom-protocol = [ "tauri/custom-protocol" ]
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
+# Keeps a second launch from starting a second copy of the app. Load-bearing
+# with minimize-to-tray: a hidden window looks like "not running", so every
+# click of the shortcut used to spawn another process.
+tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "=0.58.0", features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

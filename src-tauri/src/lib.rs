@@ -968,6 +968,57 @@ fn set_badge_count(window: tauri::Window, count: u32) {
     }
 }
 
+/// Refuse to start if anything else already owns the frontend port.
+///
+/// In release builds the main webview loads http://localhost:44548, and the
+/// capability files (capabilities/migrated.json, capabilities/desktop.json)
+/// grant this application's native permissions to that exact origin. So whoever
+/// answers on that port is handed the clipboard, an unrestricted HTTP client,
+/// dialog-mediated file access, process control and the updater.
+///
+/// tauri-plugin-localhost starts its listener inside `std::thread::spawn` and
+/// `expect`s the bind, so a panic there kills only that thread: the process
+/// carries on and the webview cheerfully renders whatever the squatter serves.
+/// Loopback ports are not partitioned per user on Linux or Windows, so a second
+/// local user — or any process that started earlier — can take it. Binding here
+/// first turns that silent takeover into a loud failure.
+///
+/// The port stays fixed rather than ephemeral because capability `remote.urls`
+/// entries are static strings resolved at build time; an ephemeral port could
+/// not be named there, and the page would end up with no capabilities at all.
+///
+/// WHY THIS IS A PLUGIN AND NOT A PLAIN CHECK BEFORE `Builder::default()`:
+/// our own second instance also fails to bind. Run before the builder, this
+/// killed every duplicate launch with exit(1) before
+/// tauri-plugin-single-instance could forward the click to the window already
+/// running — so clicking the taskbar pin, with the app minimised to tray,
+/// appeared to do nothing whatsoever. As a plugin registered after
+/// single-instance, a duplicate has already exited by the time this runs, and
+/// only a genuine foreign squatter reaches the failure path.
+fn port_guard_plugin<R: tauri::Runtime>(port: u16) -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("prinny-port-guard")
+        .setup(move |_app, _api| {
+            #[cfg(not(debug_assertions))]
+            {
+                match std::net::TcpListener::bind(("127.0.0.1", port)) {
+                    Ok(probe) => drop(probe),
+                    Err(e) => {
+                        eprintln!(
+                            "[prinny] FATAL: 127.0.0.1:{port} is already in use ({e}). The \
+                             application frontend is served on this port and holds native \
+                             capabilities, so refusing to start rather than load content from \
+                             another process."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+            let _ = port;
+            Ok(())
+        })
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // tauri-plugin-localhost serves the bundled frontend on 127.0.0.1:44548.
@@ -985,43 +1036,69 @@ pub fn run() {
         }
     }
 
+    // Frontend port. Fixed rather than ephemeral because capability
+    // `remote.urls` entries are static strings resolved at build time. The
+    // guard that stops anything else owning it lives in port_guard_plugin(),
+    // which documents why it must run as a plugin rather than here.
     let port: u16 = 44548;
 
-    // Refuse to start if anything else already owns the frontend port.
+    let context = tauri::generate_context!();
+    // Declare the same AppUserModelID the NSIS installer stamps on the Start
+    // Menu shortcut (`bundle.identifier`, i.e. in.prinny.app — the value the
+    // toast code below already relies on).
     //
-    // In release builds the main webview loads http://localhost:44548, and the
-    // capability files (capabilities/migrated.json, capabilities/desktop.json)
-    // grant this application's native permissions to that exact origin. So
-    // whoever answers on that port is handed the clipboard, an unrestricted HTTP
-    // client, dialog-mediated file access, process control and the updater.
+    // Windows groups taskbar buttons by AUMID. A process that never sets one
+    // gets a per-executable default that does not match the pinned shortcut,
+    // so pinning the app and then running it produced TWO taskbar icons: the
+    // pin, and a separate button for the live window. Setting it explicitly,
+    // before any window exists, makes them one button.
     //
-    // tauri-plugin-localhost starts its listener inside `std::thread::spawn` and
-    // `expect`s the bind, so a panic there kills only that thread: the process
-    // carries on and the webview cheerfully renders whatever the squatter
-    // serves. Loopback ports are not partitioned per user on Linux or Windows,
-    // so a second local user — or any process that started earlier — can take
-    // it. Binding here first turns that silent takeover into a loud failure.
-    //
-    // The port stays fixed rather than ephemeral because capability `remote.urls`
-    // entries are static strings resolved at build time; an ephemeral port could
-    // not be named there, and the page would end up with no capabilities at all.
-    #[cfg(not(debug_assertions))]
-    {
-        match std::net::TcpListener::bind(("127.0.0.1", port)) {
-            Ok(probe) => drop(probe),
-            Err(e) => {
-                eprintln!(
-                    "[prinny] FATAL: 127.0.0.1:{port} is already in use ({e}). The application \
-                     frontend is served on this port and holds native capabilities, so refusing \
-                     to start rather than load content from another process."
-                );
-                std::process::exit(1);
-            }
+    // This reinforces the identity toasts already depend on rather than
+    // changing it — an AUMID mismatch silently drops Windows toasts, so these
+    // two must never drift apart.
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::core::HSTRING;
+        use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+        // Reuses the context built above — `generate_context!()` embeds the
+        // whole frontend bundle, so invoking it a second time is not free.
+        let app_id = HSTRING::from(context.config().identifier.as_str());
+        if let Err(e) = SetCurrentProcessExplicitAppUserModelID(&app_id) {
+            eprintln!("Failed to set AppUserModelID: {e}");
         }
     }
 
-    let context = tauri::generate_context!();
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // MUST be the first plugin registered. A second instance has to bail out
+    // before anything else initialises — `tauri-plugin-localhost` binds a TCP
+    // port and `tauri-plugin-window-state` writes the saved geometry, so a
+    // duplicate that gets as far as those either fails to start or clobbers
+    // the running window's position on the way out.
+    //
+    // Without this, minimize-to-tray made duplicates trivial to create: the
+    // close button hides the window (see useSystemTray.ts), so the app looks
+    // shut down while still running, and the next click on the shortcut,
+    // taskbar pin or Start menu entry launched a whole new copy — each with
+    // its own tray icon and its own Matrix sync.
+    #[cfg(not(mobile))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Runs in the FIRST instance when a duplicate is launched.
+            if let Some(window) = app.get_webview_window("main") {
+                // Order matters: a window hidden to tray needs show() before
+                // set_focus() does anything, and a minimized one needs
+                // unminimize() as well. Both are no-ops when not applicable,
+                // so run all three rather than trying to detect the state.
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder = builder
         .manage(DroppedPaths::default())
         .manage(HomeserverOrigin::default())
         // Record the real OS paths from each native drag-drop so that
@@ -1055,6 +1132,11 @@ pub fn run() {
             fetch_og_preview,
             send_windows_message_toast,
         ])
+        // Registered AFTER single-instance and BEFORE localhost on purpose.
+        // Plugin setups run in registration order, so by the time this probes
+        // the port a duplicate launch has already been intercepted and exited,
+        // and tauri-plugin-localhost has not yet bound the port itself.
+        .plugin(port_guard_plugin(port))
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
