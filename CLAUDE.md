@@ -251,6 +251,36 @@ mkdir -p cinny/dist && echo '<!doctype html>' > cinny/dist/index.html
 reports *tail's* status, so a failed build reads as a pass. Redirect to a file,
 or use `${PIPESTATUS[0]}`.
 
+## `cinny/dist` carries a baked-in base path
+
+`build.config.ts` reads `PRINNY_BASE`, and Vite bakes that value into **every**
+emitted asset URL. Two different builds come out of the same source:
+
+| Command | Asset URLs | Who gets it |
+|---|---|---|
+| `npm run build` | `/assets/…` | self-hosters (`webapp-release`), the Tauri desktop/Android bundles |
+| `PRINNY_BASE=/app/ npm run build` | `/app/assets/…` | https://prinny.app/app/ |
+
+Both write to the same `cinny/dist/`, and nothing in the tree records which
+one produced it. So **after building or verifying the `/app/` variant, re-run
+plain `npm run build` before any desktop/Android build** — otherwise
+`tauri.conf.json`'s `frontendDist` embeds a `dist/` whose assets all point at
+`/app/…`, and the packaged app loads a white screen with 404s in the console.
+Nothing fails at build time; the breakage only shows up at runtime.
+
+Check which variant is sitting there:
+
+```bash
+grep -o '"/[a-z]*/*assets/index[^"]*"' cinny/dist/index.html | head -2
+```
+
+`"/assets/index-….js"` is the desktop-safe one. `"/app/assets/index-….js"` is not.
+
+The subpath build is produced only by the **Rebuild and deploy to prinny.app**
+step in `cinny/.github/workflows/publish-webapp.yml`, which runs after the
+`webapp-release` publish — so CI never ships a `/app/`-based build anywhere
+else. This trap is a local-workflow one.
+
 ## Critical: working directory
 
 **The Bash tool's CWD persists between commands.** After `cd cinny`, all subsequent Bash calls run from there. `npm run tauri` fails with "Missing script: tauri" because `cinny/package.json` doesn't have that script. Always verify `pwd` before build commands.
