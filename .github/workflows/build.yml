@@ -562,10 +562,25 @@ jobs:
       - name: Bump version
         run: node scripts/bump-version.mjs
 
+      # Retried because Gradle resolves the Kotlin toolchain from Maven Central
+      # at configure time, and that regularly answers HTTP 429 Too Many
+      # Requests on shared runners — a red build with nothing wrong in it. Only
+      # the dependency-resolution phase is flaky; the compile itself is
+      # deterministic, and cargo/Gradle caches make a second attempt cheap.
       - name: Build Android APK
         run: |
           export NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
-          CARGO_BUILD_JOBS=1 npx tauri android build
+          for attempt in 1 2 3; do
+            if CARGO_BUILD_JOBS=1 npx tauri android build; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Android build attempt $attempt failed; retrying in $((attempt * 60))s"
+              sleep $((attempt * 60))
+            fi
+          done
+          echo "::error::Android build failed after 3 attempts"
+          exit 1
 
       # CRITICAL: sign every release with the SAME key. Previously this step
       # ran `keytool -genkeypair` on each run, minting a fresh random key per
