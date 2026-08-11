@@ -27,8 +27,10 @@
       "#PrivSec.dev:arcticfoxes.net",
       "#disroot:aria-net.org"
     ],
-    "servers": ["matrixrooms.info"]
+    "servers": []
   },
+
+  "publicServersUrl": "https://prinny.app/api/servers.json",
 
   "hashRouter": {
     "enabled": true,

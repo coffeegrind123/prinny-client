@@ -82,7 +82,8 @@ Everything below is what this fork adds on top of upstream [Cinny](https://cinny
 | Presence indicators | Online/busy/away dots on DM avatars and member list |
 | DM unread filter | "..." menu next to Direct Messages → "Show unread only" collapses list to rooms with unread messages |
 | Mobile swipe gestures | Right-edge swipe opens the active room, left-edge swipe goes back. Selected room highlights during swipe for visual feedback. Works on Home, Direct, and Space screens |
-| matrixrooms.info directory | Explore Community lists `matrixrooms.info` as a pre-configured directory server — MRS-backed federated public-room directory, browsable without joining the homeserver |
+| Public server directory | Explore Community and the login screen both read a combined list of ~1150 public homeservers, merged daily from asra.gr, joinmatrix.org and privacydev.net at `prinny.app/api/servers.json`. Browse any server's public rooms, or filter by software, captcha, email and Tor policy when picking where to register |
+| Homeserver autocomplete | The login/register homeserver field completes inline as you type (address-bar style) against that directory, with a full searchable browser behind the magnifier |
 
 ### Desktop shell
 
