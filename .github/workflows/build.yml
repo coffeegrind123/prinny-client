@@ -665,6 +665,15 @@ jobs:
         with:
           node-version-file: cinny/.node-version
           package-manager-cache: false
+      # Without this the zip ships whatever version is committed in the repo
+      # (4.11.10) rather than the release being built, because the About screen
+      # reads it straight from cinny/package.json. The four platform jobs
+      # already stamp it; this one did not.
+      - name: Stamp release version
+        env:
+          PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
+        run: node scripts/bump-version.mjs
+
       - name: Install + rebrand + build
         working-directory: cinny
         env:
