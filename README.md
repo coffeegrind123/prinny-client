@@ -16,7 +16,7 @@ Everything is on [GitHub Releases](https://github.com/coffeegrind123/prinny-clie
 | macOS | [DMG](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-universal.dmg) |
 | Linux | [AppImage](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.AppImage) · [deb](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.deb) |
 | Android | [APK](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-android-universal.apk) (sideload) |
-| Web | [zip](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-webapp.zip) · [git self-host](#self-host-web) |
+| Web | [prinny.app/app](https://prinny.app/app/) (hosted) · [zip](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-webapp.zip) · [git self-host](#self-host-web) |
 
 Desktop builds update themselves via `release.json`. Android checks on launch and downloads new APKs when available.
 
@@ -84,6 +84,8 @@ Everything below is what this fork adds on top of upstream [Cinny](https://cinny
 | Mobile swipe gestures | Right-edge swipe opens the active room, left-edge swipe goes back. Selected room highlights during swipe for visual feedback. Works on Home, Direct, and Space screens |
 | Public server directory | Explore Community and the login screen both read a combined list of ~1150 public homeservers, merged daily from asra.gr, joinmatrix.org and privacydev.net at `prinny.app/api/servers.json`. Browse any server's public rooms, or filter by software, captcha, email and Tor policy when picking where to register |
 | Homeserver autocomplete | The login/register homeserver field completes inline as you type (address-bar style) against that directory, with a full searchable browser behind the magnifier |
+| hCaptcha registration | Some servers run hCaptcha behind the spec's `m.login.recaptcha` stage, which hands out an hCaptcha sitekey that Google's widget can never accept. The provider is detected from the sitekey format (Google keys start `6L`, hCaptcha keys are UUIDs) and the matching widget rendered |
+| Sign-up fallback | Any registration step without a native dialog opens the homeserver's own `/_matrix/client/v3/auth/<stage>/fallback/web` page in a popup and resumes automatically. Servers that serve no fallback page get a plain explanation plus a link to their actual sign-up page, taken from the server directory |
 
 ### Desktop shell
 
@@ -141,7 +143,7 @@ Everything below is what this fork adds on top of upstream [Cinny](https://cinny
 |---------|-------------|
 | Unified CI | Single `build.yml` triggers on push (build + artifacts) and `release: published` (upload to release + `release.json`) |
 | 4 platforms | Windows (x86_64 MSI + NSIS), macOS (universal DMG), Linux (x86_64 AppImage + deb), Android (universal APK) |
-| Cross-compile | Windows builds from Linux via `x86_64-pc-windows-gnu` + mingw-w64 + NSIS |
+| Native per-platform runners | Windows on `windows-latest` (MSI + NSIS), macOS on `macos-latest` (universal), Linux on `ubuntu-22.04`, Android on `ubuntu-24.04`. Local development can cross-compile Windows from Linux via `x86_64-pc-windows-gnu` + mingw-w64, which produces NSIS only — no MSI |
 | Serial Rust builds | `mustRunAfter` chain in `RustPlugin.kt` prevents parallel Android linkers from OOMing |
 | Release metadata | `scripts/release.mjs` generates `release.json` on `tauri` tag for desktop + Android updater |
 
