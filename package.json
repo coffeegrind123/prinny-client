@@ -13,18 +13,8 @@
   "keywords": [],
   "author": "Ajay Bura",
   "license": "AGPL-3.0-only",
-  "dependencies": {
-    "@tauri-apps/api": "2.7.0",
-    "@tauri-apps/plugin-clipboard-manager": "2.3.0",
-    "@tauri-apps/plugin-dialog": "2.3.2",
-    "@tauri-apps/plugin-fs": "2.4.1",
-    "@tauri-apps/plugin-global-shortcut": "2.3.0",
-    "@tauri-apps/plugin-http": "2.5.1",
-    "@tauri-apps/plugin-notification": "2.3.0",
-    "@tauri-apps/plugin-os": "2.3.0",
-    "@tauri-apps/plugin-process": "2.3.0",
-    "@tauri-apps/plugin-shell": "2.3.0",
-    "@tauri-apps/plugin-updater": "2.9.0"
+  "//dependencies": {
+    "note": "This package has no runtime dependencies and must not grow any. It is the Tauri shell, not a frontend: tauri.conf.json points frontendDist at ../cinny/dist and beforeBuildCommand runs the build inside cinny/, so every JS import resolves from cinny/node_modules against cinny/package.json. The @tauri-apps/api and eleven @tauri-apps/plugin-* entries that used to sit here were never imported by anything in this repo — the four scripts/*.mjs files use only @actions/github and node builtins. Add a plugin's JS package to cinny/package.json, next to the Rust crate's entry in src-tauri/Cargo.toml."
   },
   "devDependencies": {
     "@actions/github": "9.1.1",
