@@ -18,3 +18,7 @@ devAssets
 
 # Local smoke-test output of scripts/release-notes.mjs (CI writes it fresh each run)
 release-notes.md
+
+# Claude Code session state — scheduled_tasks.lock and friends are local
+# scratch, not project files.
+.claude/
