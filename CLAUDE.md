@@ -871,19 +871,63 @@ window_builder = window_builder.disable_drag_drop_handler();
 
 After this, dropped files arrive as a normal `DragEvent` with a populated `dataTransfer.files` — the frontend `useGlobalDropListener` in `src/app/pages/App.tsx` routes them through `setGlobalDropHandler`, which `RoomInput.tsx` registers to push files into the attachment list as if the paperclip button had been used.
 
-### Twitter/X media: don't iframe fxtwitter — render <video> direct from vxtwitter
+### Twitter/X media: a `<video>` CANNOT strip its own Referer — fetch it to a blob
 
 `video.twimg.com` returns 403 on any cross-origin Referer. Past attempts:
 
 1. Direct `<video src="https://video.twimg.com/...">` → 403 (Referer header sent)
 2. `<iframe src="https://fxtwitter.com/u/status/123">` → fxtwitter returns the full Twitter SPA, not a media player — video doesn't render in an iframe
+3. `<video src={mediaURL} referrerPolicy="no-referrer">` → **also 403.** This one
+   looked like it worked and did not. `referrerpolicy` is a content attribute on
+   `<img>`, `<iframe>`, `<link>`, `<script>` and `<a>` — the HTML spec defines
+   nothing of the sort on media elements, and `'referrerPolicy' in
+   HTMLVideoElement.prototype` is `false`. React writes the attribute, the
+   engine ignores it, the document policy applies, twimg 403s. Symptom: Twitter
+   GIFs/videos dead with `MediaError code 4` while ordinary GIF links played
+   fine — because those render as `<img>`, where the attribute IS honoured.
 
-Working approach (`UrlPreviewCard.tsx` vxtwitter path):
+Working approach:
 
-1. Detect Twitter/X URL in `getTwitterId`
+1. Detect Twitter/X URL in `getTwitterId` (`UrlPreviewCard.tsx`)
 2. Client-side `fetch('https://api.vxtwitter.com/.../status/{id}')` (CORS-friendly)
-3. Render `<video src={mediaURL} referrerPolicy="no-referrer" />` — stripping Referer makes `video.twimg.com` serve the file
-4. Do **not** set `crossOrigin` — it triggers a CORS preflight that twimg blocks
+3. Fetch the media itself with the referrer stripped and hand the element a
+   blob — `useResolvedMediaSrc` in `GifMedia.tsx`. Inside the Tauri shell that
+   is the Rust `fetch_remote_bytes` proxy; on the web (and as the shell's
+   fallback) it is `fetchNoReferrerBlobUrl`, i.e. `fetch(url, { referrerPolicy:
+   'no-referrer' })`. `fetch()` does honour the policy where a media element
+   cannot, and twimg serves CORS, so this is the one path that works in a
+   browser.
+4. Do **not** set `crossOrigin` — it buys nothing here (it does not affect the
+   Referer, which is the thing twimg checks).
+
+Measured in Chromium at `https://prinny.app`, same URL, same session:
+
+| request | result |
+|---|---|
+| `<video referrerpolicy="no-referrer" src=…mp4>` | 403, `MediaError code 4` |
+| `fetch(…, { referrerPolicy: 'no-referrer' })` | 200, `video/mp4`, plays from blob |
+
+### folds `<Scroll>` does not scroll inside `<Modal flexHeight>` when it is wrapped
+
+`flexHeight` sets `height: unset` on the modal, so no ancestor has a definite
+height and folds' `Scroll { height: 100% }` cannot resolve its percentage — it
+falls back to `auto`, grows to its full content height, has nothing to scroll,
+and the modal's `overflow: hidden` clips the rest. A long list simply ends flat
+with no scrollbar.
+
+It only bites when the `Scroll` is wrapped in a `<Box grow="Yes">`. As a
+*direct* flex child of the modal column it is flex-sized and shrinks correctly,
+which is why some modals were fine and others were not:
+
+| shape | scrolls? |
+|---|---|
+| `Modal > [Header, Scroll]` | yes — leave alone |
+| `Modal > Box(col) > [Header, Box grow > Scroll]` | **no** — needs the fix |
+
+Fix is `ModalFlexScroll` in `cinny/src/app/styles/Modal.css.ts` (`height: auto;
+flex: 1 1 0; min-height: 0`) on the `<Scroll>`. **Do not apply it to the direct
+shape** — there it collapses the modal to header height, because a `flex-basis:
+0` child leaves the content-sized modal with no content to size to.
 
 ### Use cargo check before committing Rust changes
 
