@@ -32,6 +32,18 @@ tauri-plugin-mobile-push = "0.1"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
 tauri-plugin-opener = "2"
+# Delivers `matrix:` URIs (MSC2312) opened by another application to the
+# frontend. Needed on EVERY platform, not just desktop: what differs per
+# platform is only where the scheme is *registered* — from
+# `plugins.deep-link.desktop.schemes` in tauri.conf.json on desktop, from the
+# VIEW/BROWSABLE intent filter in AndroidManifest.xml on Android — while
+# reading the launch intent and forwarding it to JS is this plugin's job
+# everywhere. It used to sit in the desktop-only dependency block while
+# `capabilities/mobile.json` still granted `deep-link:default`, and a capability
+# naming a permission no plugin provides is a hard build failure: every Android
+# CI build died in the build script with "Permission deep-link:default not
+# found".
+tauri-plugin-deep-link = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
 hex = "0.4"
@@ -51,10 +63,6 @@ tauri-plugin-updater = "2"
 # Registers the app with the OS session manager so it can start at login.
 # Desktop only — Android has no equivalent concept for a normal app.
 tauri-plugin-autostart = "2"
-# Registers the `matrix:` URI scheme so links from other applications open a
-# room or user here. Desktop only; Android registration is an intent filter in
-# AndroidManifest.xml instead.
-tauri-plugin-deep-link = "2"
 # Keeps a second launch from starting a second copy of the app. Load-bearing
 # with minimize-to-tray: a hidden window looks like "not running", so every
 # click of the shortcut used to spawn another process.

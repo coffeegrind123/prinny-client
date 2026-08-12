@@ -1242,7 +1242,14 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(unifiedpush_plugin())
         .plugin(foreground_plugin())
-        .plugin(message_notification_plugin());
+        .plugin(message_notification_plugin())
+        // All platforms. On Android the scheme is registered by the manifest's
+        // intent filter rather than by the plugin, but the launch intent still
+        // has to be read and handed to the frontend, and that is this plugin.
+        // `capabilities/mobile.json` grants `deep-link:default`, so this
+        // registration is also what keeps the Android build from failing on an
+        // unknown permission.
+        .plugin(tauri_plugin_deep_link::init());
 
     #[cfg(not(mobile))]
     {
@@ -1272,8 +1279,7 @@ pub fn run() {
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec!["--minimized"]),
-            ))
-            .plugin(tauri_plugin_deep_link::init());
+            ));
     }
 
     builder
