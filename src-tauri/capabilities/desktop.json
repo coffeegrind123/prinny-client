@@ -29,6 +29,11 @@
     "core:tray:allow-set-tooltip",
     "core:tray:allow-set-show-menu-on-left-click",
     "core:menu:default",
-    "core:app:allow-default-window-icon"
+    "core:app:allow-default-window-icon",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "deep-link:default",
+    "deep-link:allow-get-current"
   ]
 }

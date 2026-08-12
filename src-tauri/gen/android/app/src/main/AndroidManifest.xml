@@ -62,6 +62,21 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+
+            <!-- `matrix:` URIs (MSC2312) from other apps open a room or user
+                 here. The desktop deep-link plugin registers its schemes from
+                 tauri.conf.json, but Android resolves handlers from the
+                 manifest, so the filter has to be declared explicitly.
+
+                 BROWSABLE is required for links tapped in a browser or another
+                 app to reach us at all; without it this only matches explicit
+                 intents and looks like the registration silently failed. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="matrix" />
+            </intent-filter>
         </activity>
 
         <!-- UnifiedPush receiver -->

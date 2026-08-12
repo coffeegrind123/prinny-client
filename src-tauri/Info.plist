@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the bundled Info.plist by tauri-bundler on macOS builds.
+
+  Usage descriptions: without these two keys macOS does not prompt for the
+  microphone or camera — it terminates the process the moment WKWebView asks for
+  either. So a missing string here does not look like a permissions problem, it
+  looks like the app crashing when you press record. Both are required before
+  voice messages or calls can work on macOS at all.
+
+  URL types: registers the `matrix:` scheme so links from other applications
+  open a room or user here. The desktop deep-link plugin reads its scheme list
+  from tauri.conf.json for Windows and Linux, but macOS resolves URL handlers
+  from the bundle's Info.plist, so it has to be declared here as well.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Prinny needs the microphone to record voice messages and to take part in calls.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Prinny needs the camera for video calls.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>Matrix URI</string>
+        <key>CFBundleTypeRole</key>
+        <string>Viewer</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>matrix</string>
+        </array>
+      </dict>
+    </array>
+  </dict>
+</plist>

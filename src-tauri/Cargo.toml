@@ -48,10 +48,27 @@ custom-protocol = [ "tauri/custom-protocol" ]
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
+# Registers the app with the OS session manager so it can start at login.
+# Desktop only — Android has no equivalent concept for a normal app.
+tauri-plugin-autostart = "2"
+# Registers the `matrix:` URI scheme so links from other applications open a
+# room or user here. Desktop only; Android registration is an intent filter in
+# AndroidManifest.xml instead.
+tauri-plugin-deep-link = "2"
 # Keeps a second launch from starting a second copy of the app. Load-bearing
 # with minimize-to-tray: a hidden window looks like "not running", so every
 # click of the shortcut used to spawn another process.
 tauri-plugin-single-instance = "2"
+
+# Linux only, and only to reach the WebView's own settings and permission
+# signals: WebKitGTK ships with `enable-media-stream` off and denies every
+# permission request that has no handler connected, so getUserMedia can never
+# succeed without touching both. Pinned to the exact version wry already
+# resolves, so this adds no new crate to the graph — on a mismatch,
+# `PlatformWebview::inner()` hands back a type from a different copy of the
+# bindings and nothing compiles.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "=0.58.0", features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

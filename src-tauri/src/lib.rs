@@ -30,6 +30,80 @@ struct DroppedPaths(Mutex<HashSet<PathBuf>>);
 #[derive(Default)]
 struct HomeserverOrigin(Mutex<Option<String>>);
 
+// When our own UI last asked to capture the microphone or camera.
+//
+// WebKitGTK's `permission-request` signal fires for every frame in the webview
+// and — unlike Android's `WebChromeClient.onPermissionRequest`, which hands us
+// `request.origin` — the 2.0 bindings expose no way to learn which frame asked.
+// Granting unconditionally would therefore hand the mic to any iframe the user
+// happens to load (a link preview, a call widget, later an integration-manager
+// widget), silently and with no indication.
+//
+// So the frontend arms this immediately before it calls getUserMedia itself,
+// and the handler only allows a request that arrives inside the window below.
+// Anything else is denied. A page script can call the command too, but it
+// cannot use the grant without also being the thing that calls getUserMedia
+// next — and page script in OUR origin is already the trusted party here.
+#[cfg(all(not(mobile), target_os = "linux"))]
+#[derive(Default)]
+struct CaptureIntent(Mutex<Option<std::time::Instant>>);
+
+#[cfg(all(not(mobile), target_os = "linux"))]
+const CAPTURE_INTENT_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
+
+// True while a call is running.
+//
+// The one-shot intent above works for capture our own UI initiates — a voice
+// message, the settings probe — because we call getUserMedia ourselves
+// immediately afterwards. It does NOT work for a call: Element Call runs in an
+// iframe and calls getUserMedia/getDisplayMedia itself, at whatever moment the
+// user presses a button inside it. Nothing on our side is in a position to arm
+// a 15-second window at that instant, so screen sharing from within a call was
+// denied by the handler with no way for the user to tell why.
+//
+// So a call holds the gate open for its duration instead. This is a real
+// widening: while a call is up, any frame in the webview could obtain capture.
+// It is bounded by the call actually running, and by the frontend clearing it
+// on leave — see useCallCaptureSession.
+#[cfg(all(not(mobile), target_os = "linux"))]
+#[derive(Default)]
+struct CaptureSession(Mutex<bool>);
+
+// Arms the capture window. Called by the frontend right before getUserMedia.
+#[cfg(all(not(mobile), target_os = "linux"))]
+#[tauri::command]
+fn arm_capture_intent(state: tauri::State<'_, CaptureIntent>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
+    *guard = Some(std::time::Instant::now());
+    Ok(())
+}
+
+// Opens or closes the call-duration capture gate.
+#[cfg(all(not(mobile), target_os = "linux"))]
+#[tauri::command]
+fn set_capture_session(state: tauri::State<'_, CaptureSession>, active: bool) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
+    *guard = active;
+    Ok(())
+}
+
+#[cfg(not(all(not(mobile), target_os = "linux")))]
+#[tauri::command]
+fn set_capture_session(active: bool) -> Result<(), String> {
+    let _ = active;
+    Ok(())
+}
+
+// Non-Linux shells do their own gating: Android checks the frame origin in
+// MainActivity.onPermissionRequest, and WebView2/WKWebView prompt the user.
+// The command still exists everywhere so the frontend needs no per-platform
+// branch at the call site.
+#[cfg(not(all(not(mobile), target_os = "linux")))]
+#[tauri::command]
+fn arm_capture_intent() -> Result<(), String> {
+    Ok(())
+}
+
 // Records the homeserver origin for the lifetime of the process. Called by the
 // frontend once the Matrix client is up. Only the origin is kept — any path,
 // query or fragment is discarded.
@@ -941,6 +1015,19 @@ fn send_windows_message_toast(
     Err("send_windows_message_toast is Windows-only".to_string())
 }
 
+/// Asks the OS to keep this window out of screenshots and screen recordings.
+///
+/// Enforced by the compositor, not by us: Windows honours it via
+/// `SetWindowDisplayAffinity` and macOS via `NSWindowSharingNone`. On most Linux
+/// setups it does nothing at all, which is why the setting that drives this says
+/// so rather than implying a guarantee we cannot make.
+#[tauri::command]
+fn set_content_protection(window: tauri::Window, enabled: bool) -> Result<(), String> {
+    window
+        .set_content_protected(enabled)
+        .map_err(|e| format!("could not change content protection: {e}"))
+}
+
 #[tauri::command]
 fn set_badge_count(window: tauri::Window, count: u32) {
     #[cfg(target_os = "windows")]
@@ -1098,6 +1185,13 @@ pub fn run() {
         }));
     }
 
+    #[cfg(all(not(mobile), target_os = "linux"))]
+    {
+        builder = builder
+            .manage(CaptureIntent::default())
+            .manage(CaptureSession::default());
+    }
+
     builder = builder
         .manage(DroppedPaths::default())
         .manage(HomeserverOrigin::default())
@@ -1131,6 +1225,9 @@ pub fn run() {
             fetch_remote_bytes,
             fetch_og_preview,
             send_windows_message_toast,
+            arm_capture_intent,
+            set_capture_session,
+            set_content_protection,
         ])
         // Registered AFTER single-instance and BEFORE localhost on purpose.
         // Plugin setups run in registration order, so by the time this probes
@@ -1150,8 +1247,33 @@ pub fn run() {
     #[cfg(not(mobile))]
     {
         builder = builder
-            .plugin(tauri_plugin_window_state::Builder::default().build())
-            .plugin(tauri_plugin_updater::Builder::new().build());
+            // Everything EXCEPT visibility. The plugin defaults to
+            // StateFlags::all(), which restores whether the window was visible
+            // when it was last closed — and that fights both of the ways this
+            // app legitimately hides itself:
+            //   - closing to tray saves "hidden", so the next manual launch
+            //     would come up invisible and look like a failure to start;
+            //   - a `--minimized` autostart launch would be overridden back to
+            //     visible by a restore that says the window used to be shown.
+            // Size, position, maximized and fullscreen are still restored.
+            .plugin(
+                tauri_plugin_window_state::Builder::default()
+                    .with_state_flags(
+                        tauri_plugin_window_state::StateFlags::all()
+                            & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                    )
+                    .build(),
+            )
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            // Start at login, off unless the user turns it on in settings.
+            // `--minimized` is passed so an app that launches itself at boot
+            // does so into the tray rather than stealing the screen from
+            // whatever the user actually opened their machine to do.
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec!["--minimized"]),
+            ))
+            .plugin(tauri_plugin_deep_link::init());
     }
 
     builder
@@ -1178,6 +1300,24 @@ pub fn run() {
             #[cfg(not(mobile))]
             {
                 window_builder = window_builder.inner_size(800.0, 800.0);
+            }
+
+            // The autostart registration launches us with `--minimized`, so a
+            // login-triggered start goes straight to the tray instead of
+            // throwing a window in front of whatever the user actually opened
+            // their machine to do. Without honouring the flag here, "start at
+            // login" would mean "start and interrupt", which is not what the
+            // setting says it does.
+            //
+            // The tray icon is what makes this recoverable, and it is created
+            // unconditionally below; a hidden window with no tray icon would be
+            // an app the user cannot get back.
+            #[cfg(not(mobile))]
+            {
+                let start_hidden = std::env::args().any(|arg| arg == "--minimized");
+                if start_hidden {
+                    window_builder = window_builder.visible(false);
+                }
             }
 
             // Transparent titlebar on macOS — the default is a permanently
@@ -1222,6 +1362,107 @@ pub fn run() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+
+            // WebKitGTK ships with media capture switched OFF, and denies every
+            // permission request that nothing is connected to. Both are silent:
+            // navigator.mediaDevices.getUserMedia simply rejects, which reads as
+            // "our recorder is broken" rather than "the engine never offered the
+            // microphone". Neither Windows nor macOS needs this — their webviews
+            // enable capture and prompt on their own.
+            #[cfg(all(not(mobile), target_os = "linux"))]
+            {
+                use webkit2gtk::glib::prelude::ObjectExt;
+                use webkit2gtk::{
+                    PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, WebContextExt,
+                    WebViewExt,
+                };
+
+                let window = app
+                    .get_webview_window("main")
+                    .ok_or_else(|| "main window missing".to_string())?;
+                let capture_intent = app.state::<CaptureIntent>().inner() as *const CaptureIntent;
+                // The state lives for the lifetime of the app, and the closure
+                // runs on the main thread alongside it.
+                let capture_intent = capture_intent as usize;
+                let capture_session =
+                    app.state::<CaptureSession>().inner() as *const CaptureSession as usize;
+
+                window.with_webview(move |webview| {
+                    let wv = webview.inner();
+
+                    if let Some(settings) = WebViewExt::settings(&wv) {
+                        settings.set_enable_media_stream(true);
+                        settings.set_enable_webrtc(true);
+                    }
+
+                    // Spell checking is off by default in WebKitGTK, so the
+                    // composer had no red squiggles on Linux while it did on
+                    // Windows and macOS (whose webviews enable it themselves).
+                    // Languages come from the user's own locale environment
+                    // rather than a hardcoded list — enabling with an empty
+                    // language set makes WebKit fall back to its default, which
+                    // is usually en_US regardless of who is typing.
+                    if let Some(context) = WebViewExt::context(&wv) {
+                        let locales: Vec<String> = ["LC_ALL", "LC_MESSAGES", "LANG"]
+                            .iter()
+                            .filter_map(|key| std::env::var(key).ok())
+                            .flat_map(|value| {
+                                value
+                                    .split(':')
+                                    .filter(|part| !part.is_empty() && *part != "C")
+                                    .map(|part| part.split('.').next().unwrap_or(part).to_string())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect();
+
+                        if !locales.is_empty() {
+                            let refs: Vec<&str> = locales.iter().map(String::as_str).collect();
+                            context.set_spell_checking_languages(&refs);
+                            context.set_spell_checking_enabled(true);
+                        }
+                    }
+
+                    wv.connect_permission_request(move |_wv, request| {
+                        if !request.is::<UserMediaPermissionRequest>() {
+                            // Geolocation, notifications, pointer lock, DRM,
+                            // media-key-system: none of these are asked for by
+                            // our own UI today, and a silent grant is worse than
+                            // a feature that visibly does not work yet.
+                            request.deny();
+                            return true;
+                        }
+
+                        // SAFETY: the pointers are to Tauri-managed state that
+                        // outlives the webview, and this signal runs on the main
+                        // thread where that state is never moved.
+                        let intent = unsafe { &*(capture_intent as *const CaptureIntent) };
+                        let session = unsafe { &*(capture_session as *const CaptureSession) };
+
+                        // A call holds the gate open for its duration; anything
+                        // else has to have armed a one-shot window just before
+                        // asking. The one-shot is consumed either way, so two
+                        // requests never ride on one arming.
+                        let in_call = session.0.lock().map(|guard| *guard).unwrap_or(false);
+                        let armed = intent
+                            .0
+                            .lock()
+                            .ok()
+                            .and_then(|mut guard| guard.take())
+                            .is_some_and(|at| at.elapsed() < CAPTURE_INTENT_WINDOW);
+
+                        if in_call || armed {
+                            request.allow();
+                        } else {
+                            eprintln!(
+                                "[prinny] denied a webview capture request that our UI did not ask for"
+                            );
+                            request.deny();
+                        }
+                        true
+                    });
+                })?;
+            }
+
             Ok(())
         })
         .run(context)
