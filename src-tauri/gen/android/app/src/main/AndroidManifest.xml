@@ -77,6 +77,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="matrix" />
             </intent-filter>
+
+            <!-- `prinny://bot/@bot:server?start=payload` — bot deep links, the
+                 equivalent of Telegram's t.me/bot?start=. The shareable form of
+                 the same link is https://prinny.app/bot/…, but an https link
+                 opened outside the app goes to the browser: catching it here
+                 instead would need Android App Links, i.e. autoVerify plus a
+                 hosted assetlinks.json. A custom scheme costs one filter. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="prinny" />
+            </intent-filter>
         </activity>
 
         <!-- UnifiedPush receiver -->

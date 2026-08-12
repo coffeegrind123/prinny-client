@@ -59,7 +59,8 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "matrix"
+          "matrix",
+          "prinny"
         ]
       }
     }
