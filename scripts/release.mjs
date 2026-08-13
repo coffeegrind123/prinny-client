@@ -1,27 +1,53 @@
 import { getOctokit, context } from "@actions/github";
 
-async function getAssetSign(url) {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/octet-stream",
-    },
-  });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Without this check an HTTP error body ("Not Found", an S3 XML error, a
-  // rate-limit page) is returned as if it were the signature/digest, gets
-  // written into release.json, and every client then fails minisign
-  // verification ("Invalid encoding in minisign data") — or, for Android,
-  // compares its APK against a digest that was never a digest. Fail loudly
-  // here instead: the caller's Promise.allSettled leaves the field unset, the
-  // emit() guard drops the platform, and the updater simply reports no update.
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download ${url}: HTTP ${response.status} ${response.statusText}`
-    );
+// A just-uploaded release asset is not immediately servable. GitHub's asset CDN
+// answers 503 (or refuses the connection outright) for a short window after the
+// upload, and this script runs seconds after the last platform job finishes —
+// squarely inside it. 404 is retried for the same reason: the asset exists in
+// the API response we are iterating, so a 404 from the download host means "not
+// there yet", not "not there".
+const RETRYABLE_STATUS = new Set([403, 404, 408, 425, 429, 500, 502, 503, 504]);
+
+async function getAssetSign(url, attempts = 6) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+      });
+
+      // Without this check an HTTP error body ("Not Found", an S3 XML error, a
+      // rate-limit page) is returned as if it were the signature/digest, gets
+      // written into release.json, and every client then fails minisign
+      // verification ("Invalid encoding in minisign data") — or, for Android,
+      // compares its APK against a digest that was never a digest.
+      if (response.ok) return await response.text();
+
+      lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
+      if (!RETRYABLE_STATUS.has(response.status)) break;
+    } catch (err) {
+      // Network-level failure, which surfaces as a bare "fetch failed".
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    if (attempt < attempts) {
+      const backoff = Math.min(2 ** attempt * 500, 15000) + Math.floor(Math.random() * 250);
+      console.log(
+        `Retrying ${url} in ${backoff}ms (attempt ${attempt}/${attempts}): ${lastError.message}`
+      );
+      await sleep(backoff);
+    }
   }
 
-  return response.text();
+  throw new Error(
+    `Failed to download ${url} after ${attempts} attempts: ${lastError?.message}`
+  );
 }
 
 async function createTauriRelease() {
@@ -115,17 +141,32 @@ async function createTauriRelease() {
   // as { signature, url } — adding android here would fail with
   // "missing field signature". Android lives at top-level instead and
   // is read by our native UpdateChecker.kt.
-  const emit = (key, obj) => {
+  //
+  // A platform whose signature asset EXISTS but could not be downloaded is a
+  // different thing from one that was never built, and it must not be treated
+  // the same way. On 2026-08-12 the asset CDN 503'd on every .sig in the run;
+  // every platform was silently dropped, the job reported success, and the
+  // published release.json contained `"platforms": {}` — which every client
+  // reports as "None of the fallback platforms were found in the response".
+  // That is collected below and made fatal.
+  const hasAsset = (pattern) => latestAssets.some((asset) => pattern.test(asset.name));
+  const problems = [];
+
+  const emit = (key, obj, sigPattern) => {
     if (obj.url && obj.signature) {
       releaseData.platforms[key] = obj;
-    } else {
-      console.log(`No signed ${key} updater artifact (TAURI_SIGNING_PRIVATE_KEY not set, or build failed?)`);
+      return;
     }
+    if (obj.url && hasAsset(sigPattern)) {
+      problems.push(`${key}: the signature asset was uploaded but could not be downloaded`);
+      return;
+    }
+    console.log(`No signed ${key} updater artifact (TAURI_SIGNING_PRIVATE_KEY not set, or build failed?)`);
   };
-  emit('windows-x86_64', windowsX86_64);
-  emit('linux-x86_64', linuxX86_64);
-  emit('darwin-x86_64', darwinUniversal);
-  emit('darwin-aarch64', darwinUniversal);
+  emit('windows-x86_64', windowsX86_64, /\.nsis\.zip\.sig$/);
+  emit('linux-x86_64', linuxX86_64, /\.AppImage\.tar\.gz\.sig$/);
+  emit('darwin-x86_64', darwinUniversal, /\.app\.tar\.gz\.sig$/);
+  emit('darwin-aarch64', darwinUniversal, /\.app\.tar\.gz\.sig$/);
 
   // Android mirrors the desktop emit() guard: BOTH the APK url and its sha256
   // must be present. The client (UpdateChecker.kt) verifies the digest of the
@@ -134,10 +175,31 @@ async function createTauriRelease() {
   // to check" — installs an unverified APK. No digest, no update offer.
   if (android.url && android.sha256) {
     releaseData.android = android;
+  } else if (android.url && hasAsset(/prinny-android-universal\.apk\.sha256$/)) {
+    problems.push('android: the .sha256 asset was uploaded but could not be downloaded');
   } else if (android.url) {
     console.log('Android APK found but no .sha256 digest — skipping android entry');
   } else {
     console.log('No android artifact');
+  }
+
+  // Publishing a release.json with no platforms at all does not degrade the
+  // updater, it disables it: every client reports that none of its fallback
+  // platforms were found. There is no situation where that file is the right
+  // thing to publish, so fail instead.
+  if (Object.keys(releaseData.platforms).length === 0) {
+    problems.push('no desktop platforms resolved — release.json would disable the updater');
+  }
+
+  // Deliberately before the release.json is replaced below: a failed run must
+  // leave the previous, working file in place rather than overwrite it with a
+  // worse one. A red build is recoverable by re-running; a published empty
+  // release.json breaks updates for everyone until the next release.
+  if (problems.length > 0) {
+    throw new Error(
+      `Refusing to publish release.json:\n  - ${problems.join('\n  - ')}\n` +
+        'The assets are present on the release; re-run this job to retry the downloads.'
+    );
   }
 
   // Get or create the "tauri" release used as updater metadata storage
