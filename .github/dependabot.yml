@@ -2,19 +2,20 @@
 #
 # Dependabot owns EVERY ecosystem here. The npm and cargo entries below were
 # commented out, and `.github/renovate.json` was written on the assumption that
-# Renovate would cover npm instead. It does not: Renovate is not installed on
+# Renovate would cover npm instead. It did not: Renovate is not installed on
 # this repository (no Renovate PRs, no Renovate branches), and Issues are
-# disabled, so the dependency dashboard its config gates every npm update behind
-# cannot exist. The result was that nothing watched dependencies at all — which
-# is how 22 npm advisories (10 high, including arbitrary JS execution from a
-# malicious PDF) and four Rust advisories accumulated unnoticed.
+# disabled, so the dependency dashboard its config gated every npm update behind
+# could not exist. The result was that nothing watched dependencies at all —
+# which is how 22 npm advisories (10 high, including arbitrary JS execution from
+# a malicious PDF) and four Rust advisories accumulated unnoticed. That config
+# file was deleted on 2026-08-13; this file is now the only one.
 #
 # Note that this file governs *version* updates only. Dependabot *security*
 # updates are a repository setting; both alerts and automated security fixes
 # were switched on for this repo and for coffeegrind123/prinny on 2026-08-11.
 #
-# If Renovate is ever actually installed, disable one of the two for npm before
-# it opens competing PRs on the same manifest — never both at once.
+# If Renovate is ever actually installed, remove the competing ecosystem from
+# this file in the same change — never run both on one manifest.
 
 version: 2
 updates:
