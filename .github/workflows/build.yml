@@ -661,7 +661,7 @@ jobs:
             prinny-android-universal.apk.sha256
 
   # ── Web client dist zip ─────────────────────────────────────────
-  # Self-hosters who don't want to track `coffeegrind123/cinny:webapp-release`
+  # Self-hosters who don't want to track `coffeegrind123/prinny:webapp-release`
   # via git can grab a tagged zip directly from the GitHub release. Same
   # build pipeline as the webapp-release branch (rebrand + npm run build),
   # zipped and attached as `prinny-webapp-vX.Y.Z.zip`. Extracts to a

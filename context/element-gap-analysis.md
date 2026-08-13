@@ -1,7 +1,7 @@
 # Element ↔ Prinny feature gap analysis
 
 **Compared:** `element-hq/element-web` @ `7711207` (web app version 1.12.25, 2026-08-11, shallow
-clone at `~/element-web`) against `coffeegrind123/cinny` @ `fcecd833` (version 4.11.10) as vendored
+clone at `~/element-web`) against `coffeegrind123/prinny` @ `fcecd833` (version 4.11.10) as vendored
 in `prinny-client` @ `199a0aa`, plus the Tauri shell in `prinny-client/src-tauri`.
 
 **Method:** file/marker sweep of both trees (msgtype constants, MSC identifiers, component

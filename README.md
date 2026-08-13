@@ -4,7 +4,7 @@
 [![Latest](https://img.shields.io/github/v/release/coffeegrind123/prinny-client?label=latest)](https://github.com/coffeegrind123/prinny-client/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/coffeegrind123/prinny-client/total?label=downloads)](https://github.com/coffeegrind123/prinny-client/releases)
 
-A Matrix chat client that actually feels native. Prinny Client is [Cinny](https://cinny.in) packaged with [Tauri v2](https://v2.tauri.app), shipping on Windows, macOS, Linux, and Android. Hard fork of [cinnyapp/cinny-desktop](https://github.com/cinnyapp/cinny-desktop). The frontend lives at [coffeegrind123/cinny](https://github.com/coffeegrind123/cinny) on the `main` branch.
+A Matrix chat client that actually feels native. Prinny Client is [Cinny](https://cinny.in) packaged with [Tauri v2](https://v2.tauri.app), shipping on Windows, macOS, Linux, and Android. Hard fork of [cinnyapp/cinny-desktop](https://github.com/cinnyapp/cinny-desktop). The frontend lives at [coffeegrind123/prinny](https://github.com/coffeegrind123/prinny) on the `main` branch.
 
 ## Download
 
@@ -32,10 +32,10 @@ curl -L -o prinny-webapp.zip \
 unzip prinny-webapp.zip -d /usr/share/webapps/prinny   # extracts to /usr/share/webapps/prinny/dist
 ```
 
-**Option B — git clone.** Track the [`webapp-release`](https://github.com/coffeegrind123/cinny/tree/webapp-release) branch of `coffeegrind123/cinny`. Install once, update with `git pull` — no npm, no build step. History is linear so pulls always fast-forward.
+**Option B — git clone.** Track the [`webapp-release`](https://github.com/coffeegrind123/prinny/tree/webapp-release) branch of `coffeegrind123/prinny`. Install once, update with `git pull` — no npm, no build step. History is linear so pulls always fast-forward.
 
 ```bash
-git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
+git clone -b webapp-release https://github.com/coffeegrind123/prinny.git /usr/share/webapps/prinny
 cd /usr/share/webapps/prinny && git pull   # later, to update
 ```
 

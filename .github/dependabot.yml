@@ -11,7 +11,7 @@
 #
 # Note that this file governs *version* updates only. Dependabot *security*
 # updates are a repository setting; both alerts and automated security fixes
-# were switched on for this repo and for coffeegrind123/cinny on 2026-08-11.
+# were switched on for this repo and for coffeegrind123/prinny on 2026-08-11.
 #
 # If Renovate is ever actually installed, disable one of the two for npm before
 # it opens competing PRs on the same manifest — never both at once.

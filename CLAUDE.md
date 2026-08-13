@@ -4,7 +4,7 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 
 **Repos:**
 - Desktop shell: `coffeegrind123/prinny-client` (this repo)
-- Frontend (submodule): `coffeegrind123/cinny` branch `main`
+- Frontend (submodule): `coffeegrind123/prinny` branch `main`
 
 ## Changelog Rules
 
@@ -71,10 +71,10 @@ After the release CI completes, the `release.json` on the `tauri` tag will inclu
 
 ## Webapp distribution (self-hosters)
 
-The cinny submodule auto-publishes a built copy of itself to the `webapp-release` orphan branch in `coffeegrind123/cinny` on every push to `main`. Self-hosters install with one clone and update with `git pull` — no `npm` needed at deploy time.
+The cinny submodule auto-publishes a built copy of itself to the `webapp-release` orphan branch in `coffeegrind123/prinny` on every push to `main`. Self-hosters install with one clone and update with `git pull` — no `npm` needed at deploy time.
 
 ```bash
-git clone -b webapp-release https://github.com/coffeegrind123/cinny.git /usr/share/webapps/prinny
+git clone -b webapp-release https://github.com/coffeegrind123/prinny.git /usr/share/webapps/prinny
 cd /usr/share/webapps/prinny
 git pull   # later, to update
 ```
@@ -111,7 +111,7 @@ Output lands in `src-tauri/target/x86_64-pc-windows-gnu/release/`:
 
 ## Submodule setup
 
-The `cinny/` submodule points to `coffeegrind123/cinny` (not upstream `cinnyapp/cinny`). Our `main` branch contains the Tauri notification plugin integration, e2ee decryption handling, and message content formatting.
+The `cinny/` submodule points to `coffeegrind123/prinny` (not upstream `cinnyapp/cinny`). Our `main` branch contains the Tauri notification plugin integration, e2ee decryption handling, and message content formatting.
 
 ```bash
 # First time after clone:
@@ -696,7 +696,7 @@ Toast notifications require the app to have an AppUserModelID, which Windows ass
 | `src-tauri/capabilities/migrated.json` | `notification:default` permission |
 | `src-tauri/.cargo/config.toml` | Windows GNU linker config |
 | `src-tauri/Cargo.toml` | Rust deps (tauri-plugin-notification, etc.) |
-| `.gitmodules` | Submodule → `coffeegrind123/cinny` |
+| `.gitmodules` | Submodule → `coffeegrind123/prinny` |
 | `cinny/src/app/utils/desktop-notifications.ts` | Tauri/browser notification wrapper |
 | `cinny/src/app/pages/client/ClientNonUIFeatures.tsx` | Runtime notification dispatch |
 | `cinny/src/app/features/settings/notifications/SystemNotification.tsx` | Permission UI |

@@ -1,8 +1,8 @@
 name: Auto-bump cinny submodule
 
-# Reactive submodule bump. Fires when coffeegrind123/cinny's publish-webapp
+# Reactive submodule bump. Fires when coffeegrind123/prinny's publish-webapp
 # workflow finishes a successful build and dispatches `cinny-pushed`. Updates
-# the cinny gitlink to the current head of coffeegrind123/cinny:main.
+# the cinny gitlink to the current head of coffeegrind123/prinny:main.
 #
 # Commits with `[skip ci]` so we don't auto-release the desktop client on
 # every cinny change — the pointer just stays current. A real desktop release
@@ -35,7 +35,7 @@ jobs:
         id: cinny
         run: |
           set -euo pipefail
-          SHA=$(git ls-remote https://github.com/coffeegrind123/cinny.git main | awk '{print $1}')
+          SHA=$(git ls-remote https://github.com/coffeegrind123/prinny.git main | awk '{print $1}')
           if [ -z "$SHA" ]; then
             echo "::error::Failed to resolve cinny main HEAD"
             exit 1
