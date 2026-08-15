@@ -27,6 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Needed to ask build.yml to run. Without it the dispatch below 403s and
+      # the release is silently skipped again, which is the bug this closes.
+      actions: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         # No submodules: true — we only update the recorded SHA, not the worktree.
@@ -53,6 +56,7 @@ jobs:
           echo "Latest cinny SHA: $SHA"
 
       - name: Update gitlink if it moved
+        id: bump
         env:
           NEW_SHA: ${{ steps.cinny.outputs.sha }}
           NEW_SHORT: ${{ steps.cinny.outputs.short }}
@@ -67,6 +71,7 @@ jobs:
           OLD_SHORT="${OLD_SHA:0:8}"
           if [ "$NEW_SHA" = "$OLD_SHA" ]; then
             echo "Already at $NEW_SHORT — nothing to bump"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Bumping cinny: $OLD_SHORT -> $NEW_SHORT"
@@ -79,3 +84,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "Auto-bump cinny submodule to $NEW_SHORT [skip ci]"
           git push origin main
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+
+      # The bump commit carries [skip ci] on purpose — a webapp change should
+      # not fire every workflow in this repo on push — but that left nothing to
+      # cut a desktop release. The convention was that a human would follow up
+      # with an "Update cinny submodule" commit, which both released and
+      # recorded what shipped; once this workflow started winning that race the
+      # pointer was already current, so that commit became a no-op that could
+      # not be made, and releases stranded silently. 3d165e29 only shipped
+      # because unrelated Rust work happened to land on top of it.
+      #
+      # Requesting the build here keeps "the pointer moved" and "a build went
+      # out" as one event. workflow_dispatch is one of the two events GITHUB_TOKEN
+      # is allowed to raise (the other being repository_dispatch), so this needs
+      # no PAT; the recursion guard that blocks token-raised `push` events does
+      # not apply to it.
+      - name: Release the desktop client for the new pointer
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build.yml --repo "${{ github.repository }}" --ref main
