@@ -16,6 +16,7 @@ use tauri::TitleBarStyle;
 use tauri_plugin_opener::OpenerExt;
 
 mod taskbar;
+mod rich_presence;
 
 // Paths the user actually dropped onto the window via the OS native drag-drop
 // path. `read_dropped_file` only reads paths that appear here, so a malicious
@@ -1193,6 +1194,7 @@ pub fn run() {
     }
 
     builder = builder
+        .manage(rich_presence::RichPresenceBridge::default())
         .manage(DroppedPaths::default())
         .manage(HomeserverOrigin::default())
         // Record the real OS paths from each native drag-drop so that
@@ -1228,6 +1230,8 @@ pub fn run() {
             arm_capture_intent,
             set_capture_session,
             set_content_protection,
+            rich_presence::start_rich_presence_bridge,
+            rich_presence::stop_rich_presence_bridge,
         ])
         // Registered AFTER single-instance and BEFORE localhost on purpose.
         // Plugin setups run in registration order, so by the time this probes

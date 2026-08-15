@@ -58,6 +58,11 @@ default = [ "custom-protocol" ]
 custom-protocol = [ "tauri/custom-protocol" ]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Async IO for the Discord-RPC bridge (src/rich_presence.rs), which binds a
+# named pipe on Windows and a unix socket elsewhere. Desktop only: there is no
+# RPC pipe to impersonate on a phone. The bridge builds its own current-thread
+# runtime rather than borrowing Tauri's, so no feature here is assumed of it.
+tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "sync", "time", "macros"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 # Registers the app with the OS session manager so it can start at login.
