@@ -330,6 +330,23 @@ fn message_notification_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugi
         .build()
 }
 
+// Android share-sheet target. The intent filters live in AndroidManifest.xml;
+// this is only the registration that makes the Kotlin plugin's commands
+// (`js_ready`, `read_shared_file`) reachable from the frontend.
+fn share_target_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("shareTarget")
+        .setup(|_app, api| {
+            #[cfg(target_os = "android")]
+            {
+                let _handle = api.register_android_plugin("in.prinny.app", "ShareTargetPlugin")?;
+            }
+            #[cfg(not(target_os = "android"))]
+            let _ = &api;
+            Ok(())
+        })
+        .build()
+}
+
 // Downloads a remote image (typically a Matrix sender/room avatar) and writes
 // it to the OS app-cache directory. Returns the absolute path. Used by the
 // notification frontend so platform code (notify-rust on desktop, our custom
@@ -1247,6 +1264,7 @@ pub fn run() {
         .plugin(unifiedpush_plugin())
         .plugin(foreground_plugin())
         .plugin(message_notification_plugin())
+        .plugin(share_target_plugin())
         // All platforms. On Android the scheme is registered by the manifest's
         // intent filter rather than by the plugin, but the launch intent still
         // has to be read and handed to the frontend, and that is this plugin.

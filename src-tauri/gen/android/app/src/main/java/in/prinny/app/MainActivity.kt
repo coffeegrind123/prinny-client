@@ -3,6 +3,7 @@ package `in`.prinny.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -162,6 +163,10 @@ class MainActivity : TauriActivity() {
         // plugin may not have loaded yet — MessageNotificationPlugin
         // stashes the click and replays it on load().
         handleNotificationIntent(intent)
+
+        // Cold start from the system share sheet. Same stash-and-replay
+        // arrangement, in ShareTargetPlugin.
+        handleShareIntent(intent)
     }
 
     // Hot start: the activity is already running and the system delivers
@@ -185,6 +190,84 @@ class MainActivity : TauriActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleNotificationIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    /**
+     * Turns an ACTION_SEND / ACTION_SEND_MULTIPLE intent into a share payload
+     * for the frontend, which opens a room picker.
+     *
+     * The activity is exported, so any app on the device can start it with any
+     * text and any content URI. Nothing here is trusted or acted on: the text
+     * ends up in a composer the user still has to send, and the URIs never
+     * leave Kotlin — ShareTargetPlugin hands JS opaque one-shot tokens instead.
+     * See its class comment for why.
+     */
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_SEND_MULTIPLE) {
+            return
+        }
+
+        val payload = ShareTargetPlugin.buildPayload(
+            intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
+            intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT),
+            extraStreamUris(intent),
+        )
+        if (payload == null) {
+            Log.w(TAG, "Share intent carried no text and no readable stream")
+            return
+        }
+
+        // Consume it. With launchMode=singleTask the same Intent stays on the
+        // activity until another replaces it, so without this a configuration
+        // change (rotation, theme switch) re-runs onCreate against the old
+        // intent and pops the room picker again for a share already handled.
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.removeExtra(Intent.EXTRA_SUBJECT)
+        intent.removeExtra(Intent.EXTRA_STREAM)
+        intent.action = Intent.ACTION_MAIN
+
+        ShareTargetPlugin.deliverShare(payload)
+    }
+
+    /**
+     * EXTRA_STREAM is a single Uri for ACTION_SEND and an ArrayList<Uri> for
+     * ACTION_SEND_MULTIPLE — but a sending app is free to get that wrong, so
+     * both shapes are tried regardless of the action.
+     *
+     * The typed overloads are required from API 33; the untyped ones are
+     * deprecated there but are the only option below it.
+     */
+    @Suppress("DEPRECATION")
+    private fun extraStreamUris(intent: Intent): List<Uri> {
+        val uris = mutableListOf<Uri>()
+
+        // A malformed or hostile parcel throws out of getParcelableExtra rather
+        // than returning null, and it must not take the whole share with it.
+        try {
+            val single: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            }
+            single?.let { uris.add(it) }
+        } catch (err: Throwable) {
+            Log.w(TAG, "Malformed single EXTRA_STREAM", err)
+        }
+
+        try {
+            val many: List<Uri>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            many?.filterNotNull()?.let { uris.addAll(it) }
+        } catch (err: Throwable) {
+            Log.w(TAG, "Malformed EXTRA_STREAM list", err)
+        }
+
+        return uris.distinct()
     }
 
     private fun handleNotificationIntent(intent: Intent?) {

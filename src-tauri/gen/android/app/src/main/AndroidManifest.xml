@@ -90,6 +90,33 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="prinny" />
             </intent-filter>
+
+            <!-- System share sheet. These are what put Prinny in the "Share"
+                 list of every other app on the device; MainActivity turns the
+                 intent into a payload and ShareTargetPlugin hands it to the
+                 frontend, which opens a room picker.
+
+                 `*/*` rather than an enumerated list: a Matrix room accepts any
+                 file, so narrowing the list only means Prinny is missing from
+                 the sheet for whatever was left out. text/plain is declared
+                 separately because a text share carries no stream at all and
+                 some senders match the filter literally.
+
+                 This filter is why the activity must keep treating intent
+                 extras as hostile — any app can now reach it with arbitrary
+                 text and arbitrary content URIs. Nothing is auto-sent: the
+                 payload lands in a composer the user still has to confirm. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <!-- UnifiedPush receiver -->
