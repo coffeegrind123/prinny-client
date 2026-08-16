@@ -6,6 +6,10 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 - Desktop shell: `coffeegrind123/prinny-client` (this repo)
 - Frontend (submodule): `coffeegrind123/prinny` branch `main`
 
+> **🚫 Never build Android locally.** No `tauri android build`, no `gradlew`
+> (not even a single Kotlin-compile task), no `--target *-linux-android`. GitHub
+> CI owns that build. Full rule and what to do instead: "Android build" below.
+
 ## Workspace directory: `prinny-mono/prinny-desktop`, not `prinny-client`
 
 The checkout lives at `~/prinny-mono/prinny-desktop` even though the GitHub repo
@@ -412,6 +416,32 @@ Without this, Cargo uses the system `cc` which produces Linux ELF binaries.
 
 ## Android build
 
+> ### 🚫 NEVER run an Android build locally (user directive, 16.08.2026)
+>
+> **Android is built in GitHub CI, and only there.** Do not run `npx tauri
+> android build`, `gradlew`/`./gradlew` (including single tasks like
+> `:app:compileUniversalDebugKotlin`), `cargo build/check --target
+> *-linux-android`, `apksigner`, or anything else that compiles or packages the
+> Android app on this machine — not to "just check that Kotlin compiles", not
+> to reproduce a CI failure, and not because a change looks risky. Push and let
+> the workflow build it.
+>
+> The rest of this section documents how CI does it, and the constraints it
+> works under. It is reference material, **not** an invitation to run it here.
+>
+> **What to do instead when Android code changes:**
+> - Rust: `cargo check` a *non-Android* target (Windows GNU is the fastest set
+>   up here) — it still type-checks everything outside `#[cfg(target_os =
+>   "android")]`.
+> - Kotlin: read it carefully; there is no local compile. Treat a red Android
+>   job in CI as the compile step.
+> - Frontend: `npm run build` + `npx tsc --noEmit` + `npx eslint` in `cinny/`,
+>   which are cheap and cover the JS half of any Android feature.
+> - ACL/capability changes: the generated `acl-manifests.json` and
+>   `capabilities.json` under `src-tauri/target/<target>/debug/build/cinny-*/out/`
+>   can be inspected after any `cargo check`, on any target, to prove what the
+>   frontend is actually allowed to invoke.
+
 ### Prerequisites
 
 | Tool | Path / Install | Purpose |
@@ -650,10 +680,15 @@ JS: startForegroundService()
 
 ### Iteration (edit → test on device)
 
+**Not something the agent runs** — see the rule at the top of this section. The
+loop is: edit, push to `main`, let CI build and release, install the APK it
+produced from the GitHub release.
+
 1. Edit source in `cinny/src/` or `src-tauri/`
-2. Run the end-to-end build flow above (with `CARGO_BUILD_JOBS=1`)
-3. Transfer `app-release-signed.apk` to Android device
-4. Sideload and launch
+2. Run the frontend gates locally (`npm run build`, `tsc`, `eslint` in `cinny/`)
+   and `cargo check` a non-Android target
+3. Commit + changelog + push; CI builds and signs the APK
+4. Install it from the release on the device
 
 ### Iteration (Linux → Windows)
 

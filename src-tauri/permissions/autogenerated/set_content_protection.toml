@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-content-protection"
+description = "Enables the set_content_protection command without any pre-configured scope."
+commands.allow = ["set_content_protection"]
+
+[[permission]]
+identifier = "deny-set-content-protection"
+description = "Denies the set_content_protection command without any pre-configured scope."
+commands.deny = ["set_content_protection"]

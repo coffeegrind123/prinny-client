@@ -1,6 +1,8 @@
 package `in`.prinny.app
 
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -9,7 +11,13 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
+import android.webkit.GeolocationPermissions
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.MimeTypeMap
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -305,12 +313,67 @@ class MainActivity : TauriActivity() {
 
     private var chromeClientInstalled = false
 
+    /**
+     * Wraps the WebView's existing chrome client rather than replacing it.
+     *
+     * This used to assign `RtcChromeClient()` outright, and that quietly threw
+     * away wry's `RustWebChromeClient` — which Tauri installs during onCreate
+     * (it registers activity-result launchers, so it cannot be built later) and
+     * which is the only implementation of `onShowFileChooser` in the app. With
+     * it gone, `<input type="file">.click()` — every attachment button in the
+     * client — reached the base `WebChromeClient`, whose implementation returns
+     * false and opens nothing. No error, no callback: the picker simply did not
+     * appear. `window.alert/confirm/prompt`, the geolocation prompt, WebView
+     * console output in logcat and title changes went with it.
+     *
+     * `getWebChromeClient()` is API 26+, so on Android 7.x there is nothing to
+     * delegate to; `RtcChromeClient` handles the file chooser itself in that
+     * case (see `showFilePicker`), and the rest of the behaviour falls back to
+     * the platform default.
+     */
     private fun installRtcPermissionHandler() {
         if (chromeClientInstalled) return
         val webView = findWebView(window.decorView as? ViewGroup) ?: return
-        webView.webChromeClient = RtcChromeClient()
+        val delegate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.webChromeClient
+        } else {
+            null
+        }
+        if (delegate == null) {
+            Log.w(TAG, "No existing WebChromeClient to delegate to; using built-in fallbacks")
+        }
+        webView.webChromeClient = RtcChromeClient(delegate)
         chromeClientInstalled = true
     }
+
+    /**
+     * The `<input type="file">` callback waiting on a picker we launched
+     * ourselves. Only used when there is no wry client to delegate to.
+     */
+    private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
+
+    /**
+     * Registered as a field so it is created while the activity is still
+     * INITIALIZED — `registerForActivityResult` throws once the activity has
+     * STARTED, which is why this cannot live inside the chrome client itself.
+     */
+    private val fileChooserLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val callback = pendingFileChooserCallback ?: return@registerForActivityResult
+            pendingFileChooserCallback = null
+
+            val data = result.data
+            val clipData = data?.clipData
+            val uris: Array<Uri>? = when {
+                result.resultCode != Activity.RESULT_OK -> null
+                clipData != null -> Array(clipData.itemCount) { i -> clipData.getItemAt(i).uri }
+                else -> WebChromeClient.FileChooserParams.parseResult(result.resultCode, data)
+            }
+            // Always answer, including with null: the WebView keeps the file
+            // input blocked until the callback fires, so a dropped answer means
+            // the button never works again for the life of the page.
+            callback.onReceiveValue(uris)
+        }
 
     private fun findWebView(root: ViewGroup?): WebView? {
         if (root == null) return null
@@ -327,7 +390,162 @@ class MainActivity : TauriActivity() {
     private fun hasRuntimePermission(perm: String): Boolean =
         ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED
 
-    private inner class RtcChromeClient : WebChromeClient() {
+    /**
+     * Launches the system picker for a file input.
+     *
+     * Only reached when there is no wry client to delegate to (API < 26).
+     * Mirrors what `RustWebChromeClient.showFilePicker` does, minus the camera
+     * capture branch: `FileChooserParams.createIntent()` already encodes the
+     * `accept` attribute, and the extra MIME types cover an `accept` listing
+     * several types or bare extensions, which the single `type` field cannot.
+     */
+    private fun showFilePicker(
+        filePathCallback: ValueCallback<Array<Uri>>,
+        fileChooserParams: WebChromeClient.FileChooserParams
+    ): Boolean {
+        // A picker already in flight would strand the earlier callback, so
+        // answer it before taking the new one.
+        pendingFileChooserCallback?.onReceiveValue(null)
+        pendingFileChooserCallback = filePathCallback
+
+        val intent = fileChooserParams.createIntent()
+        if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+
+        val acceptTypes = fileChooserParams.acceptTypes ?: emptyArray()
+        val type = intent.type
+        if (acceptTypes.size > 1 || type?.startsWith(".") == true) {
+            val mimeTypeMap = MimeTypeMap.getSingleton()
+            val validTypes = acceptTypes
+                .mapNotNull { accept ->
+                    when {
+                        accept.isEmpty() -> null
+                        accept.startsWith(".") ->
+                            mimeTypeMap.getMimeTypeFromExtension(accept.substring(1))
+                        else -> accept
+                    }
+                }
+                .distinct()
+            if (validTypes.isNotEmpty()) {
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, validTypes.toTypedArray())
+                if (type?.startsWith(".") == true) intent.type = validTypes[0]
+            }
+        }
+
+        return try {
+            fileChooserLauncher.launch(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No activity can handle the file chooser intent", e)
+            pendingFileChooserCallback = null
+            filePathCallback.onReceiveValue(null)
+            false
+        }
+    }
+
+    /**
+     * Adds an origin gate to the WebView's chrome client without discarding the
+     * rest of it.
+     *
+     * Every method wry's `RustWebChromeClient` implements is forwarded here, so
+     * the only behaviour that changes is `onPermissionRequest`. Forwarding has
+     * to be explicit and exhaustive — `RustWebChromeClient` is a final Kotlin
+     * class, so it cannot be subclassed, and Kotlin's `by` delegation needs an
+     * interface, which `WebChromeClient` is not. A method missing from this
+     * list silently reverts to the platform default, which is how the file
+     * chooser was lost in the first place.
+     */
+    private inner class RtcChromeClient(
+        private val delegate: WebChromeClient?
+    ) : WebChromeClient() {
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: FileChooserParams?
+        ): Boolean {
+            delegate?.let { return it.onShowFileChooser(webView, filePathCallback, fileChooserParams) }
+            if (filePathCallback == null || fileChooserParams == null) return false
+            return showFilePicker(filePathCallback, fileChooserParams)
+        }
+
+        override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+            if (delegate != null) {
+                delegate.onShowCustomView(view, callback)
+            } else {
+                super.onShowCustomView(view, callback)
+            }
+        }
+
+        override fun onHideCustomView() {
+            if (delegate != null) {
+                delegate.onHideCustomView()
+            } else {
+                super.onHideCustomView()
+            }
+        }
+
+        override fun onJsAlert(
+            view: WebView?,
+            url: String?,
+            message: String?,
+            result: JsResult?
+        ): Boolean =
+            delegate?.onJsAlert(view, url, message, result)
+                ?: super.onJsAlert(view, url, message, result)
+
+        override fun onJsConfirm(
+            view: WebView?,
+            url: String?,
+            message: String?,
+            result: JsResult?
+        ): Boolean =
+            delegate?.onJsConfirm(view, url, message, result)
+                ?: super.onJsConfirm(view, url, message, result)
+
+        override fun onJsPrompt(
+            view: WebView?,
+            url: String?,
+            message: String?,
+            defaultValue: String?,
+            result: JsPromptResult?
+        ): Boolean =
+            delegate?.onJsPrompt(view, url, message, defaultValue, result)
+                ?: super.onJsPrompt(view, url, message, defaultValue, result)
+
+        override fun onGeolocationPermissionsShowPrompt(
+            origin: String?,
+            callback: GeolocationPermissions.Callback?
+        ) {
+            // Same origin rule as capture: geolocation is not something an
+            // embedded third-party frame gets to ask for. wry's handler prompts
+            // for any origin, so the gate has to be here rather than delegated.
+            val requestOrigin = origin?.trimEnd('/') ?: ""
+            if (requestOrigin !in ALLOWED_CAPTURE_ORIGINS) {
+                Log.w(TAG, "Denying geolocation request from disallowed origin: $origin")
+                callback?.invoke(origin, false, false)
+                return
+            }
+            if (delegate != null) {
+                delegate.onGeolocationPermissionsShowPrompt(origin, callback)
+            } else {
+                super.onGeolocationPermissionsShowPrompt(origin, callback)
+            }
+        }
+
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean =
+            delegate?.onConsoleMessage(consoleMessage) ?: super.onConsoleMessage(consoleMessage)
+
+        override fun onReceivedTitle(view: WebView?, title: String?) {
+            // Not cosmetic: wry routes this into `Rust.handleReceivedTitle`,
+            // which backs the window-title APIs.
+            if (delegate != null) {
+                delegate.onReceivedTitle(view, title)
+            } else {
+                super.onReceivedTitle(view, title)
+            }
+        }
+
         override fun onPermissionRequest(request: PermissionRequest) {
             // Origin gate FIRST. onPermissionRequest fires for every frame in
             // the WebView, so without this any third-party iframe the user ends

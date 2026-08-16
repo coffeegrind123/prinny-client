@@ -1,6 +1,6 @@
 {
   "identifier": "migrated",
-  "description": "Permissions carried over from the Tauri v1 configuration, narrowed to what the frontend actually calls. This capability is granted to the remote origin below as well as to local assets, so every entry is reachable by whatever executes script in the page — treat additions accordingly.",
+  "description": "Permissions carried over from the Tauri v1 configuration, narrowed to what the frontend actually calls. This capability is granted to the remote origin below as well as to local assets, so every entry is reachable by whatever executes script in the page — treat additions accordingly. The unprefixed `allow-*` entries are the app's own commands from generate_handler!, declared in build.rs; without them Tauri's ACL rejects every invoke() from this origin, because tauri-plugin-localhost makes the app's own UI a remote origin.",
   "local": true,
   "remote": {
     "urls": [
@@ -66,6 +66,15 @@
     "os:allow-locale",
     "os:allow-hostname",
     "process:allow-restart",
-    "process:allow-exit"
+    "process:allow-exit",
+    "allow-set-badge-count",
+    "allow-set-homeserver-origin",
+    "allow-cache-notification-icon",
+    "allow-read-dropped-file",
+    "allow-fetch-remote-bytes",
+    "allow-fetch-og-preview",
+    "allow-arm-capture-intent",
+    "allow-set-capture-session",
+    "allow-set-content-protection"
   ]
 }

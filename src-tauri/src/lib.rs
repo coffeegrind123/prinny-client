@@ -316,8 +316,14 @@ fn foreground_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+// Kebab-case, like every official plugin, and it matters here rather than being
+// a style choice: the name is the ACL key (`plugin:message-notification|show`),
+// the permission-set prefix in `build.rs`, and the key the frontend invokes
+// with — all three have to agree. It was `messageNotification`, which is legal
+// but is not a form any Tauri tooling produces, so the three were easy to drift
+// apart while the ACL silently rejected every call.
 fn message_notification_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
-    tauri::plugin::Builder::new("messageNotification")
+    tauri::plugin::Builder::new("message-notification")
         .setup(|_app, api| {
             #[cfg(target_os = "android")]
             {
@@ -334,7 +340,7 @@ fn message_notification_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugi
 // this is only the registration that makes the Kotlin plugin's commands
 // (`js_ready`, `read_shared_file`) reachable from the frontend.
 fn share_target_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
-    tauri::plugin::Builder::new("shareTarget")
+    tauri::plugin::Builder::new("share-target")
         .setup(|_app, api| {
             #[cfg(target_os = "android")]
             {

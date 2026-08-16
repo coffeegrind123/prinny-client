@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-remote-bytes"
+description = "Enables the fetch_remote_bytes command without any pre-configured scope."
+commands.allow = ["fetch_remote_bytes"]
+
+[[permission]]
+identifier = "deny-fetch-remote-bytes"
+description = "Denies the fetch_remote_bytes command without any pre-configured scope."
+commands.deny = ["fetch_remote_bytes"]

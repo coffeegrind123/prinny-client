@@ -19,7 +19,17 @@ class UnifiedPushReceiver : MessagingReceiver() {
 
     companion object {
         const val TAG = "UnifiedPushReceiver"
-        const val CHANNEL_ID = "cinny_messages"
+
+        /**
+         * The SAME channel the in-app path posts on
+         * (`MessageNotificationPlugin.CHANNEL_ID`).
+         *
+         * It used to be a second channel, `cinny_messages`, which gave Android
+         * settings two entries both called "Messages" — so silencing the one
+         * you could see left the other one ringing, and the sound/importance a
+         * user chose applied to only half their notifications.
+         */
+        const val CHANNEL_ID = MessageNotificationPlugin.CHANNEL_ID
         const val NOTIFICATION_ID = 100
     }
 
@@ -121,7 +131,7 @@ class UnifiedPushReceiver : MessagingReceiver() {
                 .setContentTitle(summary.title)
                 .setContentText(summary.text)
                 .setStyle(Notification.BigTextStyle().bigText(summary.text))
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setAutoCancel(true)
                 .setContentIntent(openIntent)
                 .build()
@@ -131,7 +141,7 @@ class UnifiedPushReceiver : MessagingReceiver() {
                 .setContentTitle(summary.title)
                 .setContentText(summary.text)
                 .setStyle(Notification.BigTextStyle().bigText(summary.text))
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setAutoCancel(true)
                 .setContentIntent(openIntent)
                 .build()

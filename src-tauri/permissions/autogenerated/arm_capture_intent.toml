@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arm-capture-intent"
+description = "Enables the arm_capture_intent command without any pre-configured scope."
+commands.allow = ["arm_capture_intent"]
+
+[[permission]]
+identifier = "deny-arm-capture-intent"
+description = "Denies the arm_capture_intent command without any pre-configured scope."
+commands.deny = ["arm_capture_intent"]

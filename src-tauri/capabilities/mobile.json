@@ -1,10 +1,19 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile-capability",
-  "description": "Mobile-only permissions. Narrowed to what the frontend calls: fs, shell, dialog, http and clipboard were granted but never used, and each was reachable by any script executing in the page.",
+  "description": "Mobile-only permissions. Narrowed to what the frontend calls: fs, shell, dialog, http and clipboard were granted but never used, and each was reachable by any script executing in the page. The `remote` entry is not optional — the frontend is served by tauri-plugin-localhost on that origin, which Tauri classifies as remote, so a capability without it grants nothing to the running app.",
   "platforms": [
     "iOS",
     "android"
+  ],
+  "local": true,
+  "remote": {
+    "urls": [
+      "http://localhost:44548"
+    ]
+  },
+  "windows": [
+    "main"
   ],
   "permissions": [
     "core:default",
@@ -13,6 +22,10 @@
     "process:default",
     "mobile-push:default",
     "deep-link:default",
-    "deep-link:allow-get-current"
+    "deep-link:allow-get-current",
+    "unifiedpush:default",
+    "foreground:default",
+    "message-notification:default",
+    "share-target:default"
   ]
 }

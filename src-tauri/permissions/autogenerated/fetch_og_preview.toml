@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-og-preview"
+description = "Enables the fetch_og_preview command without any pre-configured scope."
+commands.allow = ["fetch_og_preview"]
+
+[[permission]]
+identifier = "deny-fetch-og-preview"
+description = "Denies the fetch_og_preview command without any pre-configured scope."
+commands.deny = ["fetch_og_preview"]

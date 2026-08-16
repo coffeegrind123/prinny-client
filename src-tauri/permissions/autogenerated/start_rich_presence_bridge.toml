@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-rich-presence-bridge"
+description = "Enables the start_rich_presence_bridge command without any pre-configured scope."
+commands.allow = ["start_rich_presence_bridge"]
+
+[[permission]]
+identifier = "deny-start-rich-presence-bridge"
+description = "Denies the start_rich_presence_bridge command without any pre-configured scope."
+commands.deny = ["start_rich_presence_bridge"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cache-notification-icon"
+description = "Enables the cache_notification_icon command without any pre-configured scope."
+commands.allow = ["cache_notification_icon"]
+
+[[permission]]
+identifier = "deny-cache-notification-icon"
+description = "Denies the cache_notification_icon command without any pre-configured scope."
+commands.deny = ["cache_notification_icon"]

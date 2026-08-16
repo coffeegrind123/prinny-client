@@ -345,6 +345,150 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the arm_capture_intent command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-arm-capture-intent",
+          "markdownDescription": "Enables the arm_capture_intent command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cache_notification_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cache-notification-icon",
+          "markdownDescription": "Enables the cache_notification_icon command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the fetch_og_preview command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fetch-og-preview",
+          "markdownDescription": "Enables the fetch_og_preview command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the fetch_remote_bytes command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fetch-remote-bytes",
+          "markdownDescription": "Enables the fetch_remote_bytes command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the read_dropped_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-read-dropped-file",
+          "markdownDescription": "Enables the read_dropped_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the send_windows_message_toast command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-send-windows-message-toast",
+          "markdownDescription": "Enables the send_windows_message_toast command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_badge_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-badge-count",
+          "markdownDescription": "Enables the set_badge_count command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_capture_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-capture-session",
+          "markdownDescription": "Enables the set_capture_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_content_protection command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-content-protection",
+          "markdownDescription": "Enables the set_content_protection command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_homeserver_origin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-homeserver-origin",
+          "markdownDescription": "Enables the set_homeserver_origin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_rich_presence_bridge command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-rich-presence-bridge",
+          "markdownDescription": "Enables the start_rich_presence_bridge command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_rich_presence_bridge command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-rich-presence-bridge",
+          "markdownDescription": "Enables the stop_rich_presence_bridge command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the arm_capture_intent command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-arm-capture-intent",
+          "markdownDescription": "Denies the arm_capture_intent command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cache_notification_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cache-notification-icon",
+          "markdownDescription": "Denies the cache_notification_icon command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the fetch_og_preview command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fetch-og-preview",
+          "markdownDescription": "Denies the fetch_og_preview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the fetch_remote_bytes command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fetch-remote-bytes",
+          "markdownDescription": "Denies the fetch_remote_bytes command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the read_dropped_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-read-dropped-file",
+          "markdownDescription": "Denies the read_dropped_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the send_windows_message_toast command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-send-windows-message-toast",
+          "markdownDescription": "Denies the send_windows_message_toast command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_badge_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-badge-count",
+          "markdownDescription": "Denies the set_badge_count command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_capture_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-capture-session",
+          "markdownDescription": "Denies the set_capture_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_content_protection command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-content-protection",
+          "markdownDescription": "Denies the set_content_protection command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_homeserver_origin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-homeserver-origin",
+          "markdownDescription": "Denies the set_homeserver_origin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_rich_presence_bridge command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-rich-presence-bridge",
+          "markdownDescription": "Denies the start_rich_presence_bridge command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_rich_presence_bridge command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-rich-presence-bridge",
+          "markdownDescription": "Denies the stop_rich_presence_bridge command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",
           "type": "string",
           "const": "autostart:default",
@@ -2457,6 +2601,60 @@
           "markdownDescription": "Denies the unregister command without any pre-configured scope."
         },
         {
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-start-foreground`\n- `allow-stop-foreground`\n- `allow-is-foreground-running`\n- `allow-set-microphone-active`",
+          "type": "string",
+          "const": "foreground:default",
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-start-foreground`\n- `allow-stop-foreground`\n- `allow-is-foreground-running`\n- `allow-set-microphone-active`"
+        },
+        {
+          "description": "Enables the is_foreground_running command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:allow-is-foreground-running",
+          "markdownDescription": "Enables the is_foreground_running command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_microphone_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:allow-set-microphone-active",
+          "markdownDescription": "Enables the set_microphone_active command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_foreground command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:allow-start-foreground",
+          "markdownDescription": "Enables the start_foreground command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_foreground command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:allow-stop-foreground",
+          "markdownDescription": "Enables the stop_foreground command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the is_foreground_running command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:deny-is-foreground-running",
+          "markdownDescription": "Denies the is_foreground_running command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_microphone_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:deny-set-microphone-active",
+          "markdownDescription": "Denies the set_microphone_active command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_foreground command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:deny-start-foreground",
+          "markdownDescription": "Denies the start_foreground command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_foreground command without any pre-configured scope.",
+          "type": "string",
+          "const": "foreground:deny-stop-foreground",
+          "markdownDescription": "Denies the stop_foreground command without any pre-configured scope."
+        },
+        {
           "description": "No features are enabled by default, as we believe\nthe shortcuts can be inherently dangerous and it is\napplication specific if specific shortcuts should be\nregistered or unregistered.\n",
           "type": "string",
           "const": "global-shortcut:default",
@@ -2521,6 +2719,60 @@
           "type": "string",
           "const": "global-shortcut:deny-unregister-all",
           "markdownDescription": "Denies the unregister_all command without any pre-configured scope."
+        },
+        {
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-show`\n- `allow-js-ready`\n- `allow-registerListener`\n- `allow-removeListener`",
+          "type": "string",
+          "const": "message-notification:default",
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-show`\n- `allow-js-ready`\n- `allow-registerListener`\n- `allow-removeListener`"
+        },
+        {
+          "description": "Enables the js_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:allow-js-ready",
+          "markdownDescription": "Enables the js_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:allow-registerListener",
+          "markdownDescription": "Enables the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:allow-removeListener",
+          "markdownDescription": "Enables the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the show command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:allow-show",
+          "markdownDescription": "Enables the show command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the js_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:deny-js-ready",
+          "markdownDescription": "Denies the js_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:deny-registerListener",
+          "markdownDescription": "Denies the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:deny-removeListener",
+          "markdownDescription": "Denies the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the show command without any pre-configured scope.",
+          "type": "string",
+          "const": "message-notification:deny-show",
+          "markdownDescription": "Denies the show command without any pre-configured scope."
         },
         {
           "description": "Default permissions for the mobile-push plugin\n#### This default permission set includes:\n\n- `allow-request-permission`\n- `allow-get-token`\n- `allow-register-listener`",
@@ -2941,6 +3193,126 @@
           "type": "string",
           "const": "process:deny-restart",
           "markdownDescription": "Denies the restart command without any pre-configured scope."
+        },
+        {
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-js-ready`\n- `allow-read-shared-file`\n- `allow-registerListener`\n- `allow-removeListener`",
+          "type": "string",
+          "const": "share-target:default",
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-js-ready`\n- `allow-read-shared-file`\n- `allow-registerListener`\n- `allow-removeListener`"
+        },
+        {
+          "description": "Enables the js_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:allow-js-ready",
+          "markdownDescription": "Enables the js_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the read_shared_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:allow-read-shared-file",
+          "markdownDescription": "Enables the read_shared_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:allow-registerListener",
+          "markdownDescription": "Enables the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:allow-removeListener",
+          "markdownDescription": "Enables the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the js_ready command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:deny-js-ready",
+          "markdownDescription": "Denies the js_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the read_shared_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:deny-read-shared-file",
+          "markdownDescription": "Denies the read_shared_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:deny-registerListener",
+          "markdownDescription": "Denies the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "share-target:deny-removeListener",
+          "markdownDescription": "Denies the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-registerListener`\n- `allow-removeListener`",
+          "type": "string",
+          "const": "unifiedpush:default",
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-registerListener`\n- `allow-removeListener`"
+        },
+        {
+          "description": "Enables the get_distributors command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-get-distributors",
+          "markdownDescription": "Enables the get_distributors command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_endpoint command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-get-endpoint",
+          "markdownDescription": "Enables the get_endpoint command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the register command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-register",
+          "markdownDescription": "Enables the register command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-registerListener",
+          "markdownDescription": "Enables the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-removeListener",
+          "markdownDescription": "Enables the removeListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_distributors command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-get-distributors",
+          "markdownDescription": "Denies the get_distributors command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_endpoint command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-get-endpoint",
+          "markdownDescription": "Denies the get_endpoint command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the register command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-register",
+          "markdownDescription": "Denies the register command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the registerListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-registerListener",
+          "markdownDescription": "Denies the registerListener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the removeListener command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-removeListener",
+          "markdownDescription": "Denies the removeListener command without any pre-configured scope."
         },
         {
           "description": "This permission set configures which kind of\nupdater functions are exposed to the frontend.\n\n#### Granted Permissions\n\nThe full workflow from checking for updates to installing them\nis enabled.\n\n\n#### This default permission set includes:\n\n- `allow-check`\n- `allow-download`\n- `allow-install`\n- `allow-download-and-install`",
