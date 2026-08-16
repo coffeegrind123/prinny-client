@@ -788,7 +788,7 @@ runs minimatch with `nocomment: true`). The `bundle.windows.wix` block and
 
 | Key | Asset | Constraint |
 |---|---|---|
-| `installerIcon` / `uninstallerIcon` | `src-tauri/icons/icon.ico` | Becomes `MUI_ICON` / `MUI_UNICON` |
+| `installerIcon` | `src-tauri/icons/icon.ico` | Becomes `MUI_ICON` |
 | `headerImage` | `src-tauri/nsis/header.bmp` | **150 × 57**, 24-bit BMP |
 | `sidebarImage` | `src-tauri/nsis/sidebar.bmp` | **164 × 314**, 24-bit BMP — Welcome + Finish pages |
 
@@ -797,6 +797,29 @@ template does `BrandingText "${COPYRIGHT}"`, and NSIS renders an **empty**
 `BrandingText` as its own default — so with `copyright: ""` the installer
 footer read *"Nullsoft Install System v3.x"*. The same string lands in the
 `.exe` VERSIONINFO `LegalCopyright`.
+
+> **Validate `tauri.conf.json` against the CLI's schema, NOT the Rust crate's.**
+> These are two different schemas at two different versions, and the one that
+> gates the build is the older of them. `package.json` pins
+> `@tauri-apps/cli@2.7.1`, which ships `node_modules/@tauri-apps/cli/config.schema.json`
+> at `schema.tauri.app/config/**2.7.0**` with `additionalProperties: false`,
+> while `Cargo.lock` puts `tauri-utils` at 2.9.3 / `config/**2.11.3**`. A key
+> added to the Rust config struct between those versions validates fine against
+> the crate and is a **hard build failure** on every platform, including Android,
+> because the JS CLI validates the whole config before it does anything.
+>
+> This cost a release: `uninstallerIcon` exists in tauri-utils 2.9.3 but not in
+> CLI 2.7.1, and all four platform jobs died with ``error on `bundle > windows >
+> nsis` … is not valid under any of the schemas listed in the 'anyOf' keyword``.
+> Note the failure names the *whole* `nsis` object, not the offending key, so
+> read the schema rather than guessing which key it means:
+>
+> ```bash
+> python3 -c "import json;print(sorted(json.load(open('node_modules/@tauri-apps/cli/config.schema.json'))['definitions']['NsisConfig']['properties']))"
+> ```
+>
+> Bumping the CLI to match the crates would allow `uninstallerIcon` and
+> `uninstallerHeaderImage`; until then the uninstaller uses NSIS's stock icon.
 
 **The BMP rules are not style preferences, they are format constraints:**
 
