@@ -1,11 +1,24 @@
 {
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "deb",
+      "rpm",
+      "appimage",
+      "app",
+      "dmg"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp"
+      },
       "wix": {
         "bannerPath": "wix/banner.bmp",
         "dialogImagePath": "wix/dialogImage.bmp"
@@ -20,7 +33,7 @@
     ],
     "resources": [],
     "externalBin": [],
-    "copyright": "",
+    "copyright": "Prinny - AGPL-3.0-only",
     "category": "SocialNetworking",
     "shortDescription": "Yet another matrix client",
     "longDescription": "",

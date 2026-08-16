@@ -6,6 +6,42 @@ Cinny Matrix client packaged as a desktop app via Tauri v2. Cross-compiles to Wi
 - Desktop shell: `coffeegrind123/prinny-client` (this repo)
 - Frontend (submodule): `coffeegrind123/prinny` branch `main`
 
+## Workspace directory: `prinny-mono/prinny-desktop`, not `prinny-client`
+
+The checkout lives at `~/prinny-mono/prinny-desktop` even though the GitHub repo
+is `coffeegrind123/prinny-client`. That is not a preference — **the path
+`~/prinny-mono/prinny-client` is permanently unusable from inside the
+container**, and the rename is the fix.
+
+The 9p mount Docker Desktop exposes has a dentry-cache bug that can leave a
+directory listing as `d?????????` with every `stat`/`open`/`cd` under it
+returning ENOENT, while the directory is completely fine on the Windows side.
+Three things were established by experiment on 16.08.2026, and are worth not
+re-deriving:
+
+1. **The bug is keyed to the NAME, not the directory.** Renaming the directory
+   host-side to anything the container has not already cached makes it fully
+   visible again, immediately — `.git`, `.secrets/`, the 23 GB `src-tauri/target`
+   and all. Nothing is lost and nothing needs copying.
+2. **The poisoned name stays poisoned.** After renaming away, `mkdir
+   prinny-client` from the container still fails with `EEXIST` against an entry
+   that no longer exists, and renaming the real directory back to
+   `prinny-client` makes it invisible again. So the old name is burned for the
+   life of the container.
+3. **`drop_caches` is not available** — `/proc/sys/vm/drop_caches` is read-only
+   in the container, so the cache cannot be cleared from here.
+
+Two git settings are set **locally in this checkout** as a result, both required
+for `git status` to mean anything:
+
+| Setting | Where | Why |
+|---|---|---|
+| `core.fileMode false` | repo + `cinny` submodule | The mount flips the exec bit, so `Cargo.toml`, `lib.rs`, `rich_presence.rs` and `gradlew` show as modified with a zero-line diff. |
+| `core.autocrlf true` | `cinny` submodule | The submodule worktree is CRLF (Windows git checked it out with `core.autocrlf=true` in its *system* config). Without matching it, `git diff` reports all 148 tracked files changed — 41,810 insertions and exactly 41,810 deletions, which is the signature of a pure line-ending diff and not a real one. |
+
+Do NOT "fix" that CRLF diff by rewriting line endings. The bytes are correct;
+only the container's git was reading them without the filter.
+
 ## Changelog Rules
 
 **Every commit and push MUST include a `cinny/CHANGELOG.md` update.** That file is the source of truth for both:
@@ -108,6 +144,8 @@ Output lands in `src-tauri/target/x86_64-pc-windows-gnu/release/`:
 - `cinny.exe` — the application binary (34MB)
 - `bundle/nsis/Prinny_x.y.z_x64-setup.exe` — NSIS installer (18MB)
 - `bundle/nsis/Prinny_x.y.z_x64-setup.nsis.zip` — updater archive
+
+There is no `bundle/msi/` — see "Windows ships NSIS only" below.
 
 ## Submodule setup
 
@@ -365,7 +403,7 @@ Without this, Cargo uses the system `cc` which produces Linux ELF binaries.
 ### Cross-compile caveats
 
 - **`tauri dev` won't work from Linux for Windows.** Needs native Windows display + WebView2.
-- **MSI is ignored.** Only NSIS `.exe` installer is produced on Linux cross-compile.
+- **MSI is not built at all**, on any host — `bundle.targets` in `tauri.conf.json` is an explicit list that omits `"msi"`. See "Windows ships NSIS only" below. (It was already impossible on a Linux cross-compile; now it is off everywhere, deliberately.)
 - **Code signing is skipped.** Unsigned binaries are functional.
 - **`__TAURI_BUNDLE_TYPE` patch fails on cross-compile.** Non-blocking warning.
 - **Updater needs `TAURI_SIGNING_PRIVATE_KEY`.** Unset for local dev; warning is harmless.
@@ -701,6 +739,84 @@ Toast notifications require the app to have an AppUserModelID, which Windows ass
 | `cinny/src/app/pages/client/ClientNonUIFeatures.tsx` | Runtime notification dispatch |
 | `cinny/src/app/features/settings/notifications/SystemNotification.tsx` | Permission UI |
 | `cinny/src/app/hooks/usePermission.ts` | Permission state with Tauri remapping |
+
+## Windows ships NSIS only — the MSI is off on purpose
+
+`bundle.targets` in `src-tauri/tauri.conf.json` used to be `"all"`, which on a
+Windows runner builds **both** the NSIS `-setup.exe` and the WiX `.msi`. It is
+now an explicit list — `["nsis", "deb", "rpm", "appimage", "app", "dmg"]` — i.e.
+everything `"all"` used to mean, minus `"msi"`.
+
+**Nothing ever consumed the MSI.** `scripts/release.mjs` builds `release.json`
+by matching `/\.nsis\.zip$/` and `/\.nsis\.zip\.sig$/` against the release
+assets (release.mjs:84, 87, 166). There is no `.msi` branch and never was, so
+the MSI was built, renamed and uploaded on every Windows release for zero
+consumers.
+
+**And shipping it was actively harmful, not merely wasteful:**
+
+1. **It breaks the pinned/Start-Menu shortcut, which breaks notifications.**
+   Tauri's MSI update path is uninstall-then-reinstall; NSIS upgrades in place.
+   A re-created shortcut orphans the pin and the AppUserModelID that the
+   shortcut carries. That AUMID is load-bearing here — see "Windows: single
+   instance and the taskbar AppUserModelID" above. `lib.rs` calls
+   `SetCurrentProcessExplicitAppUserModelID` with the bundle identifier so a
+   pinned and a running Prinny are one taskbar button, and
+   `send_windows_message_toast` passes the same identifier to `Toast::new`.
+   Windows **silently drops** a toast whose AUMID does not match a registered
+   shortcut, so a shortcut lost to an MSI reinstall takes desktop
+   notifications with it and reports no error anywhere.
+2. **The MSI was never rebranded.** `src-tauri/wix/banner.bmp` and
+   `dialogImage.bmp` are still upstream Cinny artwork — blue `#2A62A6` and the
+   Cinny bird — so anyone who installed the `.msi` got a Cinny-branded
+   installer for a product called Prinny.
+3. It cost a WiX toolchain download plus an extra bundle pass on every Windows
+   build.
+
+**Re-enabling it is a one-word change and everything needed is still in the
+tree:** put `"msi"` back in `bundle.targets`, and un-comment the four lines
+flagged in `.github/workflows/build.yml` (one `Move-Item` in *Rename
+artifacts*, plus the `.msi` path in *Upload artifacts* and *Upload to
+release* — those two were deleted rather than commented, because `path:` and
+`files:` are YAML block scalars where `#` is literal text and @actions/glob
+runs minimatch with `nocomment: true`). The `bundle.windows.wix` block and
+`src-tauri/wix/*.bmp` are intentionally left in place for exactly that.
+
+### Installer branding (NSIS)
+
+`bundle.windows.nsis` in `tauri.conf.json`:
+
+| Key | Asset | Constraint |
+|---|---|---|
+| `installerIcon` / `uninstallerIcon` | `src-tauri/icons/icon.ico` | Becomes `MUI_ICON` / `MUI_UNICON` |
+| `headerImage` | `src-tauri/nsis/header.bmp` | **150 × 57**, 24-bit BMP |
+| `sidebarImage` | `src-tauri/nsis/sidebar.bmp` | **164 × 314**, 24-bit BMP — Welcome + Finish pages |
+
+`bundle.copyright` is also now set (`"Prinny - AGPL-3.0-only"`). Tauri's NSIS
+template does `BrandingText "${COPYRIGHT}"`, and NSIS renders an **empty**
+`BrandingText` as its own default — so with `copyright: ""` the installer
+footer read *"Nullsoft Install System v3.x"*. The same string lands in the
+`.exe` VERSIONINFO `LegalCopyright`.
+
+**The BMP rules are not style preferences, they are format constraints:**
+
+- **24-bit `BI_RGB` only.** NSIS renders a 32-bit BMP's alpha channel as
+  *black*, so a PNG-with-transparency converted naively produces a black box.
+  `scripts/make-nsis-art.py` composites onto an opaque ground and asserts
+  `bpp == 24 && compression == 0` on the file it just wrote.
+- **Produce them at the exact pixel size.** MUI's default
+  `MUI_HEADERIMAGE_BITMAP_STRETCH` is `FitControl` (Interface.nsh:65) — the
+  bitmap is scaled to fill the control whatever its size, so matching the
+  size exactly makes the stretch a no-op instead of a resample.
+- **The header tile has a white ground on purpose.** Tauri does not override
+  `MUI_BGCOLOR`, so the header strip behind the bitmap is `#FFFFFF`. Tauri's
+  template also does not define `MUI_HEADERIMAGE_RIGHT`, so which side of the
+  header the tile lands on is decided by MUI's dialog resource; a white ground
+  blends either way. Do not give the header a dark ground.
+
+Regenerate both with `python3 scripts/make-nsis-art.py` (Pillow required). The
+script derives its palette from `src-tauri/icons/icon.png` and sets its type in
+Inter, the same face the webapp uses.
 
 ## In-app updater (Windows, Linux, macOS)
 

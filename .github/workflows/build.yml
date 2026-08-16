@@ -328,10 +328,38 @@ jobs:
           $json = (Get-Content "src-tauri\tauri.conf.json" -Raw) | ConvertFrom-Json
           "TAURI_VERSION=$($json.version)" >> $Env:GITHUB_ENV
 
+      # ── Windows ships NSIS ONLY. The MSI is deliberately not built. ──
+      #
+      # `scripts/release.mjs` builds the updater manifest by matching
+      # `/\.nsis\.zip$/` and `/\.nsis\.zip\.sig$/` on the release assets
+      # (release.mjs:84,87,166). Nothing in the updater path has ever looked
+      # at a `.msi`, so the MSI was pure build cost — and worse than free:
+      #
+      #   1. Tauri's MSI updater path is uninstall-then-reinstall. That drops
+      #      the Start Menu shortcut and re-creates it, which breaks a taskbar
+      #      pin and orphans the AppUserModelID the shortcut carries. The NSIS
+      #      installer upgrades in place and leaves the shortcut alone. That
+      #      AUMID is load-bearing here, not cosmetic: `lib.rs` calls
+      #      SetCurrentProcessExplicitAppUserModelID with the bundle
+      #      identifier so a pinned Prinny and a running Prinny are ONE
+      #      taskbar button, and `send_windows_message_toast` passes the same
+      #      identifier to `Toast::new` — Windows silently drops a toast whose
+      #      AUMID does not match a registered shortcut. Lose the shortcut,
+      #      lose the notifications, with no error anywhere.
+      #   2. `src-tauri/wix/*.bmp` is still upstream Cinny artwork (blue
+      #      #2A62A6, the Cinny bird), so the MSI shipped un-rebranded.
+      #   3. It cost WiX toolchain download + an extra bundle pass on every
+      #      Windows build for an artifact no code path consumed.
+      #
+      # Disabled at source in `src-tauri/tauri.conf.json`: `bundle.targets`
+      # went from `"all"` to an explicit list without `"msi"`. The `wix` block
+      # and `src-tauri/wix/` are intentionally KEPT so re-enabling is a
+      # one-word change — put `"msi"` back in `targets` and un-comment the
+      # four lines below.
       - name: Rename artifacts
         shell: pwsh
         run: |
-          Move-Item "src-tauri\target\release\bundle\msi\Prinny_${{ env.TAURI_VERSION }}_x64_en-US.msi" "src-tauri\target\release\bundle\msi\Prinny_desktop-x86_64.msi"
+          # Move-Item "src-tauri\target\release\bundle\msi\Prinny_${{ env.TAURI_VERSION }}_x64_en-US.msi" "src-tauri\target\release\bundle\msi\Prinny_desktop-x86_64.msi"
           Move-Item "src-tauri\target\release\bundle\nsis\Prinny_${{ env.TAURI_VERSION }}_x64-setup.exe" "src-tauri\target\release\bundle\nsis\Prinny_desktop-x86_64-setup.exe"
           Move-Item "src-tauri\target\release\bundle\nsis\Prinny_${{ env.TAURI_VERSION }}_x64-setup.nsis.zip" "src-tauri\target\release\bundle\nsis\Prinny_desktop-x86_64-setup.nsis.zip"
           Move-Item "src-tauri\target\release\bundle\nsis\Prinny_${{ env.TAURI_VERSION }}_x64-setup.nsis.zip.sig" "src-tauri\target\release\bundle\nsis\Prinny_desktop-x86_64-setup.nsis.zip.sig"
@@ -340,8 +368,13 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: prinny-windows-x86_64
+          # The `.../bundle/msi/Prinny_desktop-x86_64.msi` entry was removed
+          # here, not commented out: `path:` is a YAML block scalar, so a
+          # leading `#` is literal text, and @actions/glob parses these lines
+          # with minimatch's `nocomment: true` (internal-pattern.ts:129) — a
+          # "#"-prefixed line would be treated as a real (never-matching) glob
+          # pattern, not as a comment. See the note above `Rename artifacts`.
           path: |
-            src-tauri/target/release/bundle/msi/Prinny_desktop-x86_64.msi
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.exe
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.nsis.zip
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.nsis.zip.sig
@@ -359,8 +392,9 @@ jobs:
           # published on the first upload, which was the bug that left
           # `/latest/download/<file>` 404'ing for missing platforms.
           draft: true
+          # MSI entry removed rather than commented — same block-scalar reason
+          # as the upload-artifact step above.
           files: |
-            src-tauri/target/release/bundle/msi/Prinny_desktop-x86_64.msi
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.exe
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.nsis.zip
             src-tauri/target/release/bundle/nsis/Prinny_desktop-x86_64-setup.nsis.zip.sig
@@ -699,7 +733,7 @@ jobs:
           npm run build
       - name: Zip dist
         # Stable filename — the release tag carries the version, matching
-        # every other platform asset (.dmg/.msi/.exe/.AppImage/.deb).
+        # every other platform asset (.dmg/.exe/.AppImage/.deb).
         # `releases/latest/download/prinny-webapp.zip` resolves to
         # whatever's in the latest release.
         run: |
