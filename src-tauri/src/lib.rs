@@ -907,6 +907,109 @@ async fn fetch_og_preview(url: String) -> Result<serde_json::Value, String> {
     Err("too many redirects".to_string())
 }
 
+/// The one path the UnifiedPush Matrix-gateway discovery is defined on.
+const PUSH_GATEWAY_PATH: &str = "/_matrix/push/v1/notify";
+/// The answer is ~37 bytes. This is slack, not an allowance.
+const PUSH_GATEWAY_MAX_BYTES: usize = 8 * 1024;
+
+/// Ask a UnifiedPush endpoint's host whether it is also a Matrix push gateway.
+///
+/// This exists because the same probe done from the webview does not work, and
+/// fails in the quietest possible way. `fetch()` is subject to CORS, and
+/// ntfy.sh serves `/_matrix/push/v1/notify` from nginx with no
+/// `access-control-allow-origin` at all — while `/v1/health` on the same host
+/// does send one, so the omission is real and not a bad measurement. The
+/// browser therefore rejects a response that arrived intact and said exactly
+/// the right thing, the caller's `catch` treats that as "not a gateway", and
+/// every ntfy user is silently routed through the public gateway at
+/// matrix.gateway.unifiedpush.org instead of ntfy's own. That still delivers,
+/// which is why it went unnoticed — it just puts a third party in the path of
+/// notifications that carry sender and message body for unencrypted rooms.
+///
+/// Off the webview there is no CORS, so the probe reads what is actually there.
+/// Element X gets this right for the same reason: it probes with OkHttp.
+///
+/// Takes the ENDPOINT, not a URL to fetch. The discovery path is appended here,
+/// so this command cannot be used as a general-purpose GET against arbitrary
+/// paths on a host — the only thing page script can steer is which host is
+/// asked, and that host is about to receive all of this device's push traffic
+/// anyway.
+///
+/// Returns the gateway URL when the host claims to be one, `None` when it
+/// answers but is not, and `Err` when the probe could not be completed.
+#[tauri::command]
+async fn probe_push_gateway(endpoint: String) -> Result<Option<String>, String> {
+    let parsed = reqwest::Url::parse(&endpoint).map_err(|e| format!("invalid endpoint: {e}"))?;
+    // https only, matching the rule the pusher itself is held to: an endpoint we
+    // would refuse to register is not one worth probing.
+    if parsed.scheme() != "https" {
+        return Err(format!("scheme not allowed: {}", parsed.scheme()));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "endpoint has no host".to_string())?
+        .to_string();
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    // Same DNS vetting and pinning as every other outbound call from here: all
+    // resolved addresses must be public, and the one we vetted is the one we
+    // connect to, so the name cannot be re-resolved to something internal
+    // between the check and the request.
+    let addrs = resolve_public_addrs(&host, port).await?;
+
+    let mut gateway = parsed.clone();
+    gateway.set_path(PUSH_GATEWAY_PATH);
+    gateway.set_query(None);
+    gateway.set_fragment(None);
+
+    let client = reqwest::Client::builder()
+        .resolve(&host, addrs[0])
+        // Discovery is a direct answer or it is nothing. A redirect is not part
+        // of the contract, so rather than re-vetting hops there are none.
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("client: {e}"))?;
+
+    let resp = client
+        .get(gateway.as_str())
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("send: {e}"))?;
+
+    if !resp.status().is_success() {
+        // A 404/401/405 here is the ordinary answer from a push server that is
+        // not a Matrix gateway. Not an error — just a no.
+        return Ok(None);
+    }
+
+    let mut resp = resp;
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("body: {e}"))? {
+        buf.extend_from_slice(&chunk);
+        if buf.len() >= PUSH_GATEWAY_MAX_BYTES {
+            break;
+        }
+    }
+
+    let parsed_body: serde_json::Value = match serde_json::from_slice(&buf) {
+        Ok(value) => value,
+        // Answered with something that is not JSON: not a gateway.
+        Err(_) => return Ok(None),
+    };
+    let is_matrix_gateway = parsed_body
+        .get("unifiedpush")
+        .and_then(|up| up.get("gateway"))
+        .and_then(|g| g.as_str())
+        == Some("matrix");
+
+    Ok(if is_matrix_gateway {
+        Some(gateway.to_string())
+    } else {
+        None
+    })
+}
+
 #[tauri::command]
 async fn read_dropped_file(
     state: tauri::State<'_, DroppedPaths>,
@@ -1249,6 +1352,7 @@ pub fn run() {
             read_dropped_file,
             fetch_remote_bytes,
             fetch_og_preview,
+            probe_push_gateway,
             send_windows_message_toast,
             arm_capture_intent,
             set_capture_session,

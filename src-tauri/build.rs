@@ -28,6 +28,7 @@ const APP_COMMANDS: &[&str] = &[
     "read_dropped_file",
     "fetch_remote_bytes",
     "fetch_og_preview",
+    "probe_push_gateway",
     "send_windows_message_toast",
     "arm_capture_intent",
     "set_capture_session",

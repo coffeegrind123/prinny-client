@@ -73,6 +73,7 @@
     "allow-read-dropped-file",
     "allow-fetch-remote-bytes",
     "allow-fetch-og-preview",
+    "allow-probe-push-gateway",
     "allow-arm-capture-intent",
     "allow-set-capture-session",
     "allow-set-content-protection"
