@@ -66,6 +66,7 @@ const ANDROID_PLUGINS: &[AndroidPlugin] = &[
             "register",
             "get_endpoint",
             "get_distributors",
+            "get_status",
             "registerListener",
             "removeListener",
         ],

@@ -3249,10 +3249,10 @@
           "markdownDescription": "Denies the removeListener command without any pre-configured scope."
         },
         {
-          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-registerListener`\n- `allow-removeListener`",
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-get-status`\n- `allow-registerListener`\n- `allow-removeListener`",
           "type": "string",
           "const": "unifiedpush:default",
-          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-registerListener`\n- `allow-removeListener`"
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-register`\n- `allow-get-endpoint`\n- `allow-get-distributors`\n- `allow-get-status`\n- `allow-registerListener`\n- `allow-removeListener`"
         },
         {
           "description": "Enables the get_distributors command without any pre-configured scope.",
@@ -3265,6 +3265,12 @@
           "type": "string",
           "const": "unifiedpush:allow-get-endpoint",
           "markdownDescription": "Enables the get_endpoint command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:allow-get-status",
+          "markdownDescription": "Enables the get_status command without any pre-configured scope."
         },
         {
           "description": "Enables the register command without any pre-configured scope.",
@@ -3295,6 +3301,12 @@
           "type": "string",
           "const": "unifiedpush:deny-get-endpoint",
           "markdownDescription": "Denies the get_endpoint command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "unifiedpush:deny-get-status",
+          "markdownDescription": "Denies the get_status command without any pre-configured scope."
         },
         {
           "description": "Denies the register command without any pre-configured scope.",
