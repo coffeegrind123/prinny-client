@@ -367,13 +367,35 @@ async fn cache_notification_icon(
     url: String,
     auth_header: Option<String>,
     homeserver: Option<String>,
+    key: Option<String>,
 ) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::fs;
 
+    // Named by `key` when one is given, otherwise by the URL.
+    //
+    // A key exists so the ANDROID PUSH RECEIVER can find an avatar. That code
+    // runs with no JavaScript, often in a process started by the push itself,
+    // and knows only who sent the message — not which URL their avatar lives
+    // at. Hashing an agreed key (`user:@alice:example.org`) gives both sides
+    // the same filename from the same input, so Kotlin can look one up without
+    // a homeserver round trip, a stored access token, or any knowledge of media
+    // URLs at all.
+    //
+    // Hashed HERE rather than accepting a filename: `key` arrives from the page,
+    // and the one thing a caller must never choose is where in the filesystem
+    // this writes.
     let mut hasher = Sha256::new();
-    hasher.update(url.as_bytes());
+    hasher.update(key.as_deref().unwrap_or(&url).as_bytes());
     let hash = hex::encode(&hasher.finalize()[..16]);
+
+    // A keyed entry has to notice when the thing it names has changed — an
+    // avatar keyed by user id would otherwise be that user's FIRST avatar
+    // forever, since the filename no longer moves when the URL does. The
+    // sidecar records which URL produced the cached bytes; a mismatch re-fetches
+    // and overwrites. URL-keyed entries are immutable by construction and skip
+    // all of this.
+    let sidecar_name = format!("{hash}.url");
 
     let cache_dir = app
         .path()
@@ -386,10 +408,27 @@ async fn cache_notification_icon(
     // image extension. Old `.img` entries (without a recognized extension)
     // are deliberately skipped so they get re-fetched with a proper ext —
     // Windows toast won't render `<image src="file:///…/foo.img" />`.
-    for ext in ["png", "jpg", "jpeg", "gif", "webp", "bmp"] {
-        let candidate = icons_dir.join(format!("{hash}.{ext}"));
-        if candidate.exists() {
-            return Ok(candidate.to_string_lossy().to_string());
+    let sidecar = icons_dir.join(&sidecar_name);
+    let cached_url_matches = match &key {
+        // Keyed: only a hit when the sidecar says these bytes came from this
+        // exact URL. A missing sidecar counts as a miss, which also re-fetches
+        // entries written before the sidecar existed.
+        Some(_) => fs::read_to_string(&sidecar).is_ok_and(|cached| cached == url),
+        None => true,
+    };
+    if cached_url_matches {
+        for ext in ["png", "jpg", "jpeg", "gif", "webp", "bmp"] {
+            let candidate = icons_dir.join(format!("{hash}.{ext}"));
+            if candidate.exists() {
+                return Ok(candidate.to_string_lossy().to_string());
+            }
+        }
+    } else {
+        // Stale: drop every extension this key may have been stored under, so a
+        // format change (png avatar replaced by a jpg one) cannot leave the old
+        // image behind to win the extension scan on the next lookup.
+        for ext in ["png", "jpg", "jpeg", "gif", "webp", "bmp"] {
+            let _ = fs::remove_file(icons_dir.join(format!("{hash}.{ext}")));
         }
     }
 
@@ -517,6 +556,13 @@ async fn cache_notification_icon(
 
     let file_path = icons_dir.join(format!("{hash}.{ext}"));
     fs::write(&file_path, &bytes).map_err(|e| format!("write: {e}"))?;
+
+    // Written after the image, so a crash between the two leaves a stale-looking
+    // entry that re-fetches, rather than a sidecar promising bytes that are not
+    // there. Failure to write it is not fatal — it costs a re-fetch next time.
+    if key.is_some() {
+        let _ = fs::write(icons_dir.join(&sidecar_name), &url);
+    }
 
     Ok(file_path.to_string_lossy().to_string())
 }
