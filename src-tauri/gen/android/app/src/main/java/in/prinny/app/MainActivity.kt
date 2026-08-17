@@ -25,6 +25,37 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 
 class MainActivity : TauriActivity() {
+    /**
+     * Make the system Back gesture and button navigate, instead of quitting.
+     *
+     * wry already implements this: `WryActivity.setWebView` registers an
+     * `OnBackPressedCallback` that calls `webView.goBack()` while there is
+     * history and otherwise falls through to the default (leave the app). Its
+     * own default for the flag is `true` — it is Tauri's generated
+     * `TauriActivity` that turns it off, so every Prinny build shipped with
+     * Back meaning "close the app" from anywhere, including from a room you had
+     * just opened.
+     *
+     * Going back through the WebView's history is the right mechanism rather
+     * than a coincidence: the frontend is a single page using the History API,
+     * so its route changes ARE history entries, and `goBack()` surfaces as a
+     * popstate that react-router handles like any other back navigation. That
+     * puts the system gesture on the same path as the in-app swipe-back, which
+     * already calls `navigate(-1)`.
+     *
+     * A getter, not `= true`, so the value cannot depend on construction order:
+     * an overridden `val` with an initialiser is assigned after the superclass
+     * constructor, and this property is read from `setWebView`.
+     *
+     * Known gap: dialogs that are component state rather than routes — Settings
+     * is the notable one — are not history entries, so Back navigates the route
+     * underneath them instead of closing them. Still an improvement on closing
+     * the app; making those dismissible needs each one to push a history entry
+     * as it opens.
+     */
+    override val handleBackNavigation: Boolean
+        get() = true
+
     companion object {
         private const val TAG = "MainActivity"
 
