@@ -146,20 +146,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          STALE=$(gh release list --repo "${{ github.repository }}" \
-            --limit 200 --json tagName,isDraft,createdAt \
-            --jq '.[] | select(.isDraft) | select((.createdAt|fromdateiso8601) < (now - 21600)) | .tagName')
+          # By release ID, not tag. Drafts hold no tag, so nothing stops two of
+          # them carrying the same tag_name — v4.11.138 existed twice — and
+          # `gh release delete <tag>` resolves exactly one release per name, so
+          # a tag-driven sweep leaves the duplicate behind and reports success.
+          STALE=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+            --jq '.[] | select(.draft) | select((.created_at|fromdateiso8601) < (now - 21600)) | "\(.id) \(.tag_name)"')
           if [ -z "$STALE" ]; then
             echo "No abandoned drafts."
             exit 0
           fi
-          # Deleting a draft cannot touch a tag (--draft defers tag creation
-          # until publish), so --cleanup-tag is deliberately NOT passed: on a
-          # release that somehow does have one, it would delete the tag too.
-          echo "$STALE" | while read -r TAG; do
-            [ -n "$TAG" ] || continue
-            echo "Deleting abandoned draft $TAG"
-            gh release delete "$TAG" --repo "${{ github.repository }}" --yes
+          # DELETE on the release itself, which cannot touch a tag — the
+          # equivalent `gh release delete --cleanup-tag` would, on a release
+          # that somehow has one, and no sweep should be able to delete tags.
+          echo "$STALE" | while read -r ID TAG; do
+            [ -n "$ID" ] || continue
+            echo "Deleting abandoned draft $TAG (id $ID)"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$ID"
           done
 
       # The next version must be computed from tags AND releases, not tags alone.
