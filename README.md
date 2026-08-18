@@ -12,11 +12,22 @@ Everything is on [GitHub Releases](https://github.com/coffeegrind123/prinny-clie
 
 | Platform | Download |
 |----------|----------|
-| Windows | [MSI](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.msi) · [NSIS setup](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64-setup.exe) |
+| Windows | [Setup](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64-setup.exe) |
 | macOS | [DMG](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-universal.dmg) |
 | Linux | [AppImage](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.AppImage) · [deb](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.deb) |
 | Android | [APK](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-android-universal.apk) (sideload) |
 | Web | [prinny.app/app](https://prinny.app/app/) (hosted) · [zip](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-webapp.zip) · [git self-host](#self-host-web) |
+
+There is one Windows installer on purpose. Windows ties toast notifications and the
+taskbar button to the AppUserModelID carried by the Start Menu shortcut, so a build
+that does not install one — a loose `.exe`, or the `.msi` that used to be published
+beside this and replaced the shortcut on every update — silently loses desktop
+notifications. The setup `.exe` is the one that installs correctly and updates in
+place; it is also what the in-app updater applies.
+
+The `-setup.nsis.zip` and `.sig` sitting beside it in each release are not a second
+download — they are the archive and signature the updater fetches to apply an update
+in the background, and they are useless on their own.
 
 Desktop builds update themselves via `release.json`. Android checks on launch and downloads new APKs when available.
 
@@ -142,8 +153,8 @@ Everything below is what this fork adds on top of upstream [Cinny](https://cinny
 | Feature | Description |
 |---------|-------------|
 | Unified CI | Single `build.yml` triggers on push (build + artifacts) and `release: published` (upload to release + `release.json`) |
-| 4 platforms | Windows (x86_64 MSI + NSIS), macOS (universal DMG), Linux (x86_64 AppImage + deb), Android (universal APK) |
-| Native per-platform runners | Windows on `windows-latest` (MSI + NSIS), macOS on `macos-latest` (universal), Linux on `ubuntu-22.04`, Android on `ubuntu-24.04`. Local development can cross-compile Windows from Linux via `x86_64-pc-windows-gnu` + mingw-w64, which produces NSIS only — no MSI |
+| 4 platforms | Windows (x86_64 NSIS setup), macOS (universal DMG), Linux (x86_64 AppImage + deb), Android (universal APK) |
+| Native per-platform runners | Windows on `windows-latest` (NSIS), macOS on `macos-latest` (universal), Linux on `ubuntu-22.04`, Android on `ubuntu-24.04`. Local development can cross-compile Windows from Linux via `x86_64-pc-windows-gnu` + mingw-w64, which produces the same NSIS installer |
 | Serial Rust builds | `mustRunAfter` chain in `RustPlugin.kt` prevents parallel Android linkers from OOMing |
 | Release metadata | `scripts/release.mjs` generates `release.json` on `tauri` tag for desktop + Android updater |
 
@@ -187,7 +198,7 @@ npm run tauri build -- --target x86_64-pc-windows-gnu
 npm run tauri build
 ```
 
-Output: `src-tauri/target/release/bundle/` (MSI, NSIS installer).
+Output: `src-tauri/target/release/bundle/nsis/` (the setup `.exe` and its updater archive).
 
 ### Android
 
