@@ -61,6 +61,15 @@ jobs:
         working-directory: cinny
         run: npm run typecheck
 
+      # A hook that reads a context its own component mounts passes tsc and
+      # eslint and only fails at runtime — as the entire client replaced by an
+      # error page on startup. That is how v4.11.177 shipped with "Server
+      # versions are not provided!", so the release pipeline gates on it too
+      # rather than leaving the check to the frontend repo's own workflow.
+      - name: Context/provider ordering
+        working-directory: cinny
+        run: npm run check:contexts
+
   # ── Rust compile check for Apple targets (hard gate) ─────────────
   # Anything behind `#[cfg(target_os = "macos")]` is invisible to a Linux or
   # Windows `cargo check`, and it cannot be cross-checked off a Mac either —
