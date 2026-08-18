@@ -47,11 +47,14 @@ class MainActivity : TauriActivity() {
      * an overridden `val` with an initialiser is assigned after the superclass
      * constructor, and this property is read from `setWebView`.
      *
-     * Known gap: dialogs that are component state rather than routes — Settings
-     * is the notable one — are not history entries, so Back navigates the route
-     * underneath them instead of closing them. Still an improvement on closing
-     * the app; making those dismissible needs each one to push a history entry
-     * as it opens.
+     * Dialogs that are component state rather than routes are not history
+     * entries of their own, so Back would navigate the route underneath them
+     * instead of closing them. The frontend closes that gap by pushing a
+     * same-URL sentinel entry while such a dialog is open and dismissing on the
+     * pop (`useBackDismiss`, used by Settings) — which is also what makes the
+     * left-edge swipe work there, since in gesture-nav mode the system takes
+     * those touches for its own back gesture and the WebView only ever sees the
+     * resulting history pop.
      */
     override val handleBackNavigation: Boolean
         get() = true
