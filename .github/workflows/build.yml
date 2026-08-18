@@ -125,6 +125,43 @@ jobs:
           fetch-depth: 0
           submodules: true  # need cinny/CHANGELOG.md for release notes
 
+      # A run that dies after create-release leaves a draft behind that nothing
+      # will ever finish: release-update only publishes the draft belonging to
+      # its own run. Two of them accumulated on 17.08 when GitHub's API returned
+      # 503s mid-pipeline, and a stale draft is not merely clutter — the
+      # "Create draft release" step below treats an existing release with the
+      # computed tag as one drafted by a concurrent run and lets the platform
+      # jobs upload into it, which would put this commit's binaries inside a
+      # release whose notes and target point at an older one.
+      #
+      # Age is what separates dead from live, and it separates them cleanly: the
+      # whole pipeline finishes well inside an hour (Android, the slowest, takes
+      # ~40 min), so a draft still unpublished after six is from a run that is
+      # never coming back. A concurrent run's draft is minutes old and untouched.
+      #
+      # This runs BEFORE Compute version deliberately, so a reclaimed number is
+      # reused rather than skipped — a draft never created its git tag, so there
+      # is nothing to collide with. Published releases are never considered.
+      - name: Reap abandoned draft releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STALE=$(gh release list --repo "${{ github.repository }}" \
+            --limit 200 --json tagName,isDraft,createdAt \
+            --jq '.[] | select(.isDraft) | select((.createdAt|fromdateiso8601) < (now - 21600)) | .tagName')
+          if [ -z "$STALE" ]; then
+            echo "No abandoned drafts."
+            exit 0
+          fi
+          # Deleting a draft cannot touch a tag (--draft defers tag creation
+          # until publish), so --cleanup-tag is deliberately NOT passed: on a
+          # release that somehow does have one, it would delete the tag too.
+          echo "$STALE" | while read -r TAG; do
+            [ -n "$TAG" ] || continue
+            echo "Deleting abandoned draft $TAG"
+            gh release delete "$TAG" --repo "${{ github.repository }}" --yes
+          done
+
       # The next version must be computed from tags AND releases, not tags alone.
       # `gh release create --draft` deliberately defers creating the git tag
       # until the release is published, so a drafted-but-unpublished version is
