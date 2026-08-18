@@ -175,10 +175,9 @@ def make_sidebar():
     centered("A Matrix client that", tag, 226 * SS, LILAC + (255,))
     centered("actually feels native", tag, 240 * SS, LILAC + (255,))
 
-    # Scarf-coloured rule + the catchphrase, so the panel reads as Prinny
+    # Scarf-coloured rule under the tagline, so the panel reads as Prinny
     # rather than as a generic dark installer sidebar.
     draw.rectangle([70 * SS, 264 * SS, 94 * SS, 266 * SS], fill=SCARF + (255,))
-    centered("dood!", font(700, 9 * SS), 276 * SS, (170, 96, 104, 255))
 
     save_bmp(flatten(canvas.resize((W, H), Image.LANCZOS), INDIGO_DEEP), "sidebar.bmp", (W, H))
 
