@@ -342,6 +342,13 @@ jobs:
       # `git describe` can't see this tag yet — `gh release create
       # --draft` defers the actual git tag creation until publish.
       PRINNY_VERSION: ${{ needs.create-release.outputs.tag }}
+      # Pinned NSIS artifacts, kept beside PRINNY_VERSION so the cache key
+      # and the priming script below cannot drift apart. These are
+      # tauri-bundler's own constants for @tauri-apps/cli 2.7.1.
+      NSIS_URL: https://github.com/tauri-apps/binary-releases/releases/download/nsis-3/nsis-3.zip
+      NSIS_SHA1: 057e83c7d82462ec394af76c87d06733605543d4
+      NSIS_TAURI_UTILS_URL: https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.1/nsis_tauri_utils.dll
+      NSIS_TAURI_UTILS_SHA1: B053B2E5FDB97257954C8F935D80964F056520AE
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -360,6 +367,139 @@ jobs:
 
       - name: Bump version
         run: node scripts/bump-version.mjs
+
+      # ── NSIS toolset, primed before the bundler can flake on it ──────
+      #
+      # tauri-bundler does not ship NSIS. At bundle time it fetches
+      # nsis-3.zip and nsis_tauri_utils.dll from github.com and checks each
+      # against a SHA1 pinned in the crate. That fetch has NO retry —
+      # `download_and_verify` is one request, one chance — so a single TCP
+      # reset ends the pipeline *after* the Rust build has already succeeded.
+      # That is exactly how run 32242091303 died on 2026-08-19:
+      #
+      #     Built application at: ...\src-tauri\target\release\prinny.exe
+      #     Downloading https://github.com/tauri-apps/nsis-tauri-utils/...
+      #     failed to bundle project: `io: An existing connection was
+      #     forcibly closed by the remote host. (os error 10054)`
+      #
+      # 6m26s of compilation thrown away, and v4.11.184 left as a draft with
+      # 12 of 15 assets and no Windows installer. Nothing was wrong with the
+      # commit — the release just could not be published.
+      #
+      # So fetch both artifacts here, with retries, and lay them out exactly
+      # where the bundler looks. None of that layout is guessed:
+      #   * tools root = `dirs::cache_dir()/tauri`, and the dirs crate maps
+      #     cache_dir -> data_local_dir -> FOLDERID_LocalAppData on Windows,
+      #     i.e. %LOCALAPPDATA%\tauri. tauri-cli 2.7.1 never calls
+      #     `Settings::local_tools_directory`, so there is no flag to move it.
+      #   * toolset = <tools>\NSIS, which the bundler produces by extracting
+      #     the zip (single top-level dir `nsis-3.08`) and renaming it.
+      #   * the DLL = <toolset>\Plugins\x86-unicode\additional\nsis_tauri_utils.dll
+      # `$required` below is the bundler's own NSIS_REQUIRED_FILES list. It
+      # checks every entry and, if ANY is missing, deletes the whole toolset
+      # and re-downloads it — so priming this incompletely would be worse
+      # than not priming at all, which is why the step re-checks itself at
+      # the end and fails loudly rather than handing the bundler a half tree.
+      #
+      # The tell that this stopped working: "Verifying NSIS package" or
+      # "Downloading https://..." reappearing in the Tauri build log. On a
+      # primed runner the bundler prints neither.
+      #
+      # The SHA1s are the bundler's constants for @tauri-apps/cli 2.7.1
+      # (package.json). A CLI bump can change them; that changes the cache
+      # key too, and a mis-hashed file only makes the bundler re-download
+      # that one file — worst case is exactly today's behaviour, never worse.
+      - name: Cache NSIS toolset
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~\AppData\Local\tauri\NSIS
+          key: nsis-${{ runner.os }}-${{ env.NSIS_SHA1 }}-${{ env.NSIS_TAURI_UTILS_SHA1 }}
+
+      - name: Prime NSIS toolset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:LOCALAPPDATA 'tauri'
+          $nsis = Join-Path $tools 'NSIS'
+          $dllRel = 'Plugins\x86-unicode\additional\nsis_tauri_utils.dll'
+          $required = @(
+            'makensis.exe',
+            'Bin\makensis.exe',
+            'Stubs\lzma-x86-unicode',
+            'Stubs\lzma_solid-x86-unicode',
+            'Include\MUI2.nsh',
+            'Include\FileFunc.nsh',
+            'Include\x64.nsh',
+            'Include\nsDialogs.nsh',
+            'Include\WinMessages.nsh',
+            $dllRel
+          )
+
+          function Test-Toolset {
+            if (-not (Test-Path -LiteralPath $nsis)) { return $false }
+            foreach ($rel in $required) {
+              if (-not (Test-Path -LiteralPath (Join-Path $nsis $rel))) {
+                Write-Host "  missing: $rel"
+                return $false
+              }
+            }
+            # -eq on strings is case-insensitive in PowerShell, so the
+            # bundler's mixed-case constants compare fine against Get-FileHash.
+            $hash = (Get-FileHash -LiteralPath (Join-Path $nsis $dllRel) -Algorithm SHA1).Hash
+            if ($hash -ne $env:NSIS_TAURI_UTILS_SHA1) {
+              Write-Host "  nsis_tauri_utils.dll hash $hash != $env:NSIS_TAURI_UTILS_SHA1"
+              return $false
+            }
+            return $true
+          }
+
+          function Get-Verified($url, $out, $sha1) {
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 300
+                $hash = (Get-FileHash -LiteralPath $out -Algorithm SHA1).Hash
+                if ($hash -eq $sha1) { return }
+                Write-Output "::warning::$url hash $hash != $sha1 (attempt $attempt)"
+              } catch {
+                Write-Output "::warning::$url failed (attempt $attempt): $($_.Exception.Message)"
+              }
+              Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+              if ($attempt -lt 5) { Start-Sleep -Seconds ($attempt * 15) }
+            }
+            Write-Output "::error::could not fetch $url after 5 attempts"
+            exit 1
+          }
+
+          if (Test-Toolset) {
+            Write-Output "NSIS toolset already complete at $nsis (cache hit)"
+            exit 0
+          }
+
+          Write-Output "Priming NSIS toolset at $nsis"
+          Remove-Item -LiteralPath $nsis -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+
+          $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.zip'
+          Get-Verified $env:NSIS_URL $zip $env:NSIS_SHA1
+          Expand-Archive -LiteralPath $zip -DestinationPath $tools -Force
+          # Matched by pattern, not hardcoded as `nsis-3.08`, so a future zip
+          # that bumps the NSIS point release does not silently break this.
+          $extracted = Get-ChildItem -LiteralPath $tools -Directory -Filter 'nsis-3.*' | Select-Object -First 1
+          if (-not $extracted) {
+            Write-Output "::error::nsis-3.zip contained no nsis-3.* directory"
+            exit 1
+          }
+          Move-Item -LiteralPath $extracted.FullName -Destination $nsis
+
+          $additional = Join-Path $nsis 'Plugins\x86-unicode\additional'
+          New-Item -ItemType Directory -Force -Path $additional | Out-Null
+          Get-Verified $env:NSIS_TAURI_UTILS_URL (Join-Path $additional 'nsis_tauri_utils.dll') $env:NSIS_TAURI_UTILS_SHA1
+
+          if (-not (Test-Toolset)) {
+            Write-Output "::error::primed NSIS toolset is still incomplete: the bundler would wipe it and re-download without retries"
+            exit 1
+          }
+          Write-Output "NSIS toolset primed at $nsis"
 
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
