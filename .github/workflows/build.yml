@@ -23,6 +23,28 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
 
+# Every job carries a `timeout-minutes`, because the default is SIX HOURS and
+# that default cost a release. On 2026-08-19 linux-x86_64 wedged inside
+# `apt-get` for 82 minutes against a 14-minute worst case; windows, macOS and
+# Android had all finished and uploaded, but `release-update` waits on every
+# platform job, so v4.11.185 sat as an unpublished draft while one hung step
+# burned through a timeout nobody had set. Left alone it would have hung until
+# 22:00Z before GitHub killed it.
+#
+# The numbers are ceilings derived from measured durations across the last
+# twelve runs, not estimates, and every one has at least 2x headroom over the
+# slowest observed success (android 36m -> 75, windows and macOS 12m -> 30,
+# linux 14m -> 50 because it also has to hold its apt retry budget, everything
+# else <3m -> 15-20). They are deliberately loose: this is a
+# hang detector, not a performance budget, and a build that legitimately slows
+# down — a cold cache, a slow runner, a big dependency bump — must not fail for
+# it. If one of these ever fires on a healthy build, raise it; do not shave
+# them towards the measured time.
+#
+# A job that trips its timeout fails, its dependents skip, and the run ends
+# instead of idling for hours. The draft release it leaves behind is collected
+# by the reaper at the top of the next pipeline.
+
 # Least-privilege default for every job in this file. Jobs that genuinely need
 # more (create-release, the platform builds, archive, release-update) declare
 # their own `permissions:` block, which replaces this one wholesale — so the
@@ -40,6 +62,8 @@ jobs:
   # broken tree cannot reach a release.
   typecheck:
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured <1m. See the note on `timeout-minutes` above.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -80,6 +104,8 @@ jobs:
   # through six platform builds.
   macos-check:
     runs-on: macos-latest
+    # Ceiling, not an estimate: measured <1m, cold rust-cache is the slow case. See the note on `timeout-minutes` above.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -114,6 +140,8 @@ jobs:
     needs: [typecheck, macos-check]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured <1m. See the note on `timeout-minutes` above.
+    timeout-minutes: 15
     permissions:
       contents: write
     outputs:
@@ -274,6 +302,8 @@ jobs:
   # the release artifacts from building/uploading.
   security-audit:
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured 3m. See the note on `timeout-minutes` above.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -334,6 +364,8 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: windows-latest
+    # Ceiling, not an estimate: measured 12m. See the note on `timeout-minutes` above.
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -593,6 +625,11 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-22.04
+    # Ceiling, not an estimate: measured 14m, but this one is higher than its
+    # siblings on purpose — it has to CONTAIN the bounded apt retries below
+    # (3 attempts x 10 min worst case) plus the build itself, or the backstop
+    # would kill the very retries that exist to save the release.
+    timeout-minutes: 50
     permissions:
       contents: write
     env:
@@ -608,10 +645,38 @@ jobs:
           package-manager-cache: false
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
 
+      # This is the step that wedged for 82 minutes on 2026-08-19 and stranded a
+      # finished release as an unpublished draft — every other platform had
+      # already uploaded. The job's `timeout-minutes` is the backstop, but a
+      # backstop alone only converts a six-hour hang into a failed release, so
+      # bound each apt call directly and retry it, the way the Android build
+      # already retries its Gradle dependency resolution. A stalled mirror then
+      # costs a couple of minutes instead of the release.
+      #
+      # `timeout` and not merely a retry loop: the failure mode is a HANG, not
+      # an error. apt sat there holding the step open and returning nothing, so
+      # there was never a failure for a retry to react to — without a clock on
+      # it, a retry loop would have waited exactly as long as the job did.
+      #
+      # `dpkg --configure -a` between attempts because killing apt mid-install
+      # can leave a package half-configured, and the retry would then fail on
+      # that rather than on whatever stalled. The package list is deliberately
+      # unchanged from the plain call it replaces.
       - name: Install system deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          set -u
+          for attempt in 1 2 3; do
+            if sudo timeout 240 apt-get update &&
+               sudo timeout 360 apt-get install -y \
+                 libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; retrying in $((attempt * 20))s"
+            sudo dpkg --configure -a || true
+            sleep $((attempt * 20))
+          done
+          echo "::error::apt failed after 3 attempts — see the warnings above for which call stalled"
+          exit 1
       - name: Install cinny dependencies
         run: cd cinny && npm ci --ignore-scripts
       - name: Install tauri dependencies
@@ -675,6 +740,8 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: macos-latest
+    # Ceiling, not an estimate: measured 12m. See the note on `timeout-minutes` above.
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -752,6 +819,8 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-24.04
+    # Ceiling, not an estimate: measured 36m. See the note on `timeout-minutes` above.
+    timeout-minutes: 75
     permissions:
       contents: write
     env:
@@ -893,6 +962,8 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured 1m. See the note on `timeout-minutes` above.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -949,6 +1020,8 @@ jobs:
     needs: [create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured <1m. See the note on `timeout-minutes` above.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -981,6 +1054,8 @@ jobs:
     needs: [windows-x86_64, linux-x86_64, macos-universal, android, webapp-zip, archive, create-release]
     if: needs.create-release.outputs.created == 'true'
     runs-on: ubuntu-latest
+    # Ceiling, not an estimate: measured <1m. See the note on `timeout-minutes` above.
+    timeout-minutes: 15
     permissions:
       contents: write
       actions: write
