@@ -889,7 +889,9 @@ All three desktop platforms are signed. Android handles updates natively (`Updat
 | `TAURI_SIGNING_PRIVATE_KEY` | Single-line base64 contents of the minisign private key |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password that protects the private key |
 
-Local copies live in `.secrets/` (gitignored). Public key is committed at `src-tauri/tauri.conf.json:plugins.updater.pubkey`. **If you rotate the keypair, existing installs cannot verify the new signatures — users need one manual reinstall to pick up the new compiled-in pubkey.**
+Local copies live in `.secrets/` (gitignored, and **owner-only: directory `0700`, every file `0600`**). Public key is committed at `src-tauri/tauri.conf.json:plugins.updater.pubkey`.
+
+The modes matter as much as the gitignore, and git will never warn you about them because the directory is untracked. They had drifted once: the updater private key and the file holding its passphrase were `0644` inside a `0755` directory, while the Android keystore sitting beside them was correctly `0600` — so anything able to read that directory could sign an update every installed client accepts. `node scripts/check-secrets-perms.mjs` enforces it and runs as part of the desktop build (`beforeBuildCommand`); `--fix` corrects drift in place. It is a no-op in CI, where signing material comes from repository secrets instead. **If you rotate the keypair, existing installs cannot verify the new signatures — users need one manual reinstall to pick up the new compiled-in pubkey.**
 
 Regenerate with `npx @tauri-apps/cli signer generate --ci --password <pwd> --write-keys .secrets/prinny-updater.key --force`.
 
@@ -916,7 +918,8 @@ Regenerate with `npx @tauri-apps/cli signer generate --ci --password <pwd> --wri
 | `.github/workflows/build.yml` (windows-x86_64, linux-x86_64, macos-universal jobs) | `createUpdaterArtifacts:"v1Compatible"` + signing env, uploads updater archive + `.sig` |
 | `scripts/release.mjs` | Generates `release.json` — emits each desktop platform only when both archive + sig are present |
 | `cinny/src/app/hooks/useUpdateCheck.ts` | Tauri plugin-updater `check()` on all desktop targets |
-| `.secrets/` | Local copies of the minisign keypair + password (gitignored) |
+| `.secrets/` | Local copies of the minisign keypair + password (gitignored; dir `0700`, files `0600`) |
+| `scripts/check-secrets-perms.mjs` | Fails the build if `.secrets/` is not owner-only; `--fix` corrects it |
 
 ### Pitfalls
 

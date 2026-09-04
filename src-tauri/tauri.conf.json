@@ -52,7 +52,7 @@
     "createUpdaterArtifacts": "v1Compatible"
   },
   "build": {
-    "beforeBuildCommand": "node scripts/bump-version.mjs && node scripts/rename-prinny.mjs && cd cinny && npm run build",
+    "beforeBuildCommand": "node scripts/check-secrets-perms.mjs && node scripts/bump-version.mjs && node scripts/rename-prinny.mjs && cd cinny && npm run build",
     "frontendDist": "../cinny/dist",
     "beforeDevCommand": "cd cinny && npm start",
     "devUrl": "http://localhost:8080"
@@ -80,7 +80,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self' blob: data: filesystem: ws: wss: http: https: tauri:; script-src 'self' 'unsafe-eval' 'unsafe-inline' filesystem: tauri:; style-src 'self' 'unsafe-inline' blob: data: filesystem: http: https:; worker-src 'self' blob: tauri:; img-src 'self' data: blob: filesystem: http: https:; media-src 'self' blob: data: http: https: tauri:; frame-src 'self' https:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; connect-src 'self' blob: ipc: ws: wss: http: https: http://ipc.localhost"
+      "csp": "default-src 'self' blob: data: filesystem: ws: wss: http: https: tauri:; script-src 'self' 'wasm-unsafe-eval' filesystem: tauri: https://js.hcaptcha.com/ https://newassets.hcaptcha.com/ https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://recaptcha.net/recaptcha/; style-src 'self' 'unsafe-inline' blob: data: filesystem: http: https:; worker-src 'self' blob: tauri:; img-src 'self' data: blob: filesystem: http: https:; media-src 'self' blob: data: http: https: tauri:; frame-src 'self' https:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; connect-src 'self' blob: ipc: ws: wss: http: https: http://ipc.localhost"
     }
   }
 }
