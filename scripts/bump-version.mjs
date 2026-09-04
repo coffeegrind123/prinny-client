@@ -21,12 +21,29 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// This value is stamped into tauri.conf.json, Cargo.toml and two package.json
+// files by string splice, and is re-interpolated into shell by the artifact
+// renaming steps. It originates in a git tag name, which git itself allows to
+// contain quotes, `$(` and backticks. Anything that is not a plain semantic
+// version is refused here rather than written into a build configuration.
+const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+function assertVersion(value, source) {
+  if (!VERSION_RE.test(value)) {
+    throw new Error(
+      `[bump-version] refusing version ${JSON.stringify(value)} from ${source}: ` +
+        'expected MAJOR.MINOR.PATCH'
+    );
+  }
+  return value;
+}
+
 function getVersion() {
   const envVersion = process.env.PRINNY_VERSION;
   if (envVersion && envVersion.trim()) {
     const trimmed = envVersion.trim();
     const value = trimmed.startsWith('v') ? trimmed.slice(1) : trimmed;
-    return { value, source: 'PRINNY_VERSION env' };
+    return { value: assertVersion(value, 'PRINNY_VERSION env'), source: 'PRINNY_VERSION env' };
   }
   try {
     const tag = execSync('git describe --tags --abbrev=0', {
@@ -35,7 +52,7 @@ function getVersion() {
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
     const value = tag.startsWith('v') ? tag.slice(1) : tag;
-    return { value, source: 'git describe' };
+    return { value: assertVersion(value, 'git describe'), source: 'git describe' };
   } catch {
     const conf = JSON.parse(readFileSync(join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'));
     return { value: conf.version, source: 'tauri.conf.json fallback' };

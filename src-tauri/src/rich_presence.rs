@@ -385,8 +385,8 @@ mod imp {
         // is there, which is the only thing the probe is asking.
         const ERROR_PIPE_BUSY: i32 = 231;
 
-        pub fn socket_path(slot: u32) -> String {
-            format!(r"\\?\pipe\discord-ipc-{slot}")
+        pub fn socket_path(slot: u32) -> Option<String> {
+            Some(format!(r"\\?\pipe\discord-ipc-{slot}"))
         }
 
         pub async fn slot_is_free(path: &str) -> bool {
@@ -407,16 +407,47 @@ mod imp {
 
         use tokio::net::UnixStream;
 
-        pub fn socket_path(slot: u32) -> String {
-            let dir = std::env::var_os("XDG_RUNTIME_DIR")
-                .or_else(|| std::env::var_os("TMPDIR"))
-                .or_else(|| std::env::var_os("TMP"))
-                .or_else(|| std::env::var_os("TEMP"))
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("/tmp"));
-            dir.join(format!("discord-ipc-{slot}"))
-                .to_string_lossy()
-                .into_owned()
+        /// The directory the IPC socket lives in.
+        ///
+        /// XDG_RUNTIME_DIR only. The chain used to fall through TMPDIR, TMP and
+        /// TEMP to a hard-coded `/tmp`, which is world-traversable: on a host
+        /// where none of those was set, any OTHER local user could connect and
+        /// publish arbitrary text as this user's Matrix rich presence, and feed
+        /// arbitrary JSON to the webview. Accepting activity from same-user
+        /// processes is the intended Discord-RPC contract; accepting it from a
+        /// different user is not.
+        ///
+        /// Returns None when no per-user runtime directory can be established,
+        /// in which case the bridge simply does not start - the feature is
+        /// optional, and silently downgrading its trust boundary is not.
+        pub fn socket_dir() -> Option<PathBuf> {
+            let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+            if !dir_is_private(&dir) {
+                return None;
+            }
+            Some(dir)
+        }
+
+        /// True when the directory denies group and other entirely.
+        ///
+        /// XDG_RUNTIME_DIR is specified as a per-user directory created 0700, so
+        /// the mode is the load-bearing property; a directory that has been
+        /// loosened is refused rather than trusted for its name.
+        fn dir_is_private(dir: &std::path::Path) -> bool {
+            use std::os::unix::fs::PermissionsExt;
+            let Ok(meta) = std::fs::metadata(dir) else {
+                return false;
+            };
+            meta.is_dir() && meta.permissions().mode() & 0o077 == 0
+        }
+
+        pub fn socket_path(slot: u32) -> Option<String> {
+            Some(
+                socket_dir()?
+                    .join(format!("discord-ipc-{slot}"))
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         }
 
         pub async fn slot_is_free(path: &str) -> bool {
@@ -435,7 +466,9 @@ mod imp {
 
     async fn find_free_slot() -> Option<BridgeStarted> {
         for slot in 0..MAX_SLOTS {
-            let path = platform::socket_path(slot);
+            // None means there is no directory private to this user to bind in,
+            // so the bridge does not start at all.
+            let path = platform::socket_path(slot)?;
             if platform::slot_is_free(&path).await {
                 platform::remove_stale(&path);
                 return Some(BridgeStarted { path, index: slot });
@@ -498,6 +531,14 @@ mod imp {
             Ok(listener) => listener,
             Err(_) => return,
         };
+
+        // Owner-only, regardless of umask. The directory check already keeps
+        // other users out, but a socket left group- or world-connectable is one
+        // umask away from undoing it.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
 
         loop {
             tokio::select! {

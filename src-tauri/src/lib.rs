@@ -67,8 +67,21 @@ const CAPTURE_INTENT_WINDOW: std::time::Duration = std::time::Duration::from_sec
 // It is bounded by the call actually running, and by the frontend clearing it
 // on leave — see useCallCaptureSession.
 #[cfg(all(not(mobile), target_os = "linux"))]
+/// The call-duration capture gate.
+///
+/// Holds a DEADLINE, not a bare flag. As a flag it was set by a page-invokable
+/// command, never consumed and never expired, so one `set_capture_session(true)`
+/// granted every subsequent capture request from every frame for the rest of the
+/// process's life. The frontend renews it while a call is actually running; if
+/// the page stops renewing - or never legitimately opened a call at all - the
+/// gate closes on its own.
 #[derive(Default)]
-struct CaptureSession(Mutex<bool>);
+struct CaptureSession(Mutex<Option<std::time::Instant>>);
+
+/// How long one `set_capture_session(true)` keeps the gate open before it must
+/// be renewed. Comfortably longer than the frontend's renewal interval, short
+/// enough that a stuck or hostile page cannot hold it open indefinitely.
+const CAPTURE_SESSION_TTL: std::time::Duration = std::time::Duration::from_secs(120);
 
 // Arms the capture window. Called by the frontend right before getUserMedia.
 #[cfg(all(not(mobile), target_os = "linux"))]
@@ -84,7 +97,11 @@ fn arm_capture_intent(state: tauri::State<'_, CaptureIntent>) -> Result<(), Stri
 #[tauri::command]
 fn set_capture_session(state: tauri::State<'_, CaptureSession>, active: bool) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
-    *guard = active;
+    *guard = if active {
+        Some(std::time::Instant::now() + CAPTURE_SESSION_TTL)
+    } else {
+        None
+    };
     Ok(())
 }
 
@@ -129,9 +146,50 @@ fn set_homeserver_origin(
         Some(p) => format!("{normalized}:{p}"),
         None => normalized,
     };
+    // Reject an origin that names the local machine or a private network. This
+    // value is the ONLY input to cache_notification_icon's decision to relax its
+    // private-address guard, so accepting `http://127.0.0.1:9200` here handed
+    // the caller that guard's off switch.
+    //
+    // Resolution is deliberately not attempted: this runs on the frontend's
+    // startup path and a DNS round trip would block it. A literal private
+    // address is what the bypass needs, and that is what is refused.
+    if let Some(host) = parsed.host_str() {
+        if host_is_private_literal(host) {
+            return Err(format!("origin host not allowed: {host}"));
+        }
+    }
+
     let mut guard = state.0.lock().map_err(|_| "state poisoned".to_string())?;
+    // WRITE ONCE for the process lifetime. Every call used to overwrite the
+    // stored value, so the "state the caller cannot choose per-invocation" the
+    // comment above relies on was in fact caller-chosen - just one invoke
+    // earlier. The frontend registers this exactly once, at client startup.
+    if let Some(existing) = guard.as_deref() {
+        if existing == normalized {
+            return Ok(());
+        }
+        return Err("homeserver origin is already registered for this process".to_string());
+    }
     *guard = Some(normalized);
     Ok(())
+}
+
+/// True for a host literal that names the local machine or a private network.
+///
+/// Textual only, and deliberately so: this is a fast pre-filter for a value the
+/// page supplies. `is_disallowed_ip` remains the enforcing check for anything
+/// actually connected to, because it runs on RESOLVED addresses.
+fn host_is_private_literal(host: &str) -> bool {
+    let host = host.trim_matches(|c| c == '[' || c == ']').trim_end_matches('.');
+    let lower = host.to_ascii_lowercase();
+    if lower == "localhost" || lower.ends_with(".localhost") || lower.ends_with(".local") {
+        return true;
+    }
+    if let Ok(ip) = lower.parse::<IpAddr>() {
+        return is_disallowed_ip(&ip);
+    }
+    false
 }
 
 // ---- SSRF / remote-fetch guards -------------------------------------------
@@ -271,6 +329,46 @@ async fn resolve_public_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, 
     Ok(addrs)
 }
 
+
+/// Build the per-hop client for `cache_notification_icon`.
+///
+/// Redirects are always disabled: each hop is re-vetted and re-pinned by the
+/// caller's loop. The private-address guard is relaxed only when THIS hop's URL
+/// is the trusted homeserver origin, so a redirect away from the homeserver
+/// loses the relaxation rather than inheriting it from the first hop.
+async fn build_icon_client(
+    url: &reqwest::Url,
+    trusted_origin: Option<&str>,
+) -> Result<reqwest::Client, String> {
+    let builder = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (compatible; PrinnyNotificationIcon/1.0)")
+        .redirect(reqwest::redirect::Policy::none());
+
+    let is_trusted_origin = trusted_origin.is_some_and(|origin| {
+        reqwest::Url::parse(origin).is_ok_and(|hs| {
+            hs.scheme() == url.scheme()
+                && hs.host_str() == url.host_str()
+                && hs.port_or_known_default() == url.port_or_known_default()
+        })
+    });
+
+    if is_trusted_origin {
+        // The user's chosen homeserver, recorded once by the app at startup,
+        // which may legitimately live on a LAN address.
+        return builder.build().map_err(|e| format!("client: {e}"));
+    }
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| "url has no host".to_string())?
+        .to_string();
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs = resolve_public_addrs(&host, port).await?;
+    builder
+        .resolve(&host, addrs[0])
+        .build()
+        .map_err(|e| format!("client: {e}"))
+}
 
 // Embedded overlay icons for Windows taskbar badge (1-9, 9+)
 #[cfg(target_os = "windows")]
@@ -457,9 +555,6 @@ async fn cache_notification_icon(
         None => false,
     };
 
-    let builder = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; PrinnyNotificationIcon/1.0)");
-
     // The private-address guard may only be skipped for a homeserver origin the
     // application itself recorded at startup — never for one named in this
     // call's arguments.
@@ -471,49 +566,64 @@ async fn cache_notification_icon(
     // strings reported whether the port was open. Comparing against state that
     // the caller cannot choose per-invocation is what makes the check mean
     // something. When no origin has been registered yet, the guard applies —
-    // fail closed.
+    // fail closed. `set_homeserver_origin` is additionally write-once and
+    // refuses private hosts, so the state itself is no longer caller-chosen.
     let trusted_homeserver_origin = app
         .state::<HomeserverOrigin>()
         .0
         .lock()
         .ok()
         .and_then(|guard| guard.clone());
-    let skip_private_guard = match (&trusted_homeserver_origin, parsed.host_str()) {
-        (Some(origin), Some(_)) => reqwest::Url::parse(origin).is_ok_and(|hs| {
-            hs.scheme() == parsed.scheme()
-                && hs.host_str() == parsed.host_str()
-                && hs.port_or_known_default() == parsed.port_or_known_default()
-        }),
-        _ => false,
-    };
 
-    let client = if skip_private_guard {
-        // The user's chosen homeserver, recorded by the app at startup, which
-        // may legitimately live on a LAN address.
-        builder.build().map_err(|e| format!("client: {e}"))?
-    } else {
-        let host = parsed
-            .host_str()
-            .ok_or_else(|| "url has no host".to_string())?
-            .to_string();
-        let port = parsed.port_or_known_default().unwrap_or(443);
-        let addrs = resolve_public_addrs(&host, port).await?;
-        builder
-            .resolve(&host, addrs[0])
-            .build()
-            .map_err(|e| format!("client: {e}"))?
-    };
-
-    let mut req = client.get(&url);
-    if is_homeserver_media {
-        if let Some(auth) = auth_header.filter(|s| !s.is_empty()) {
-            req = req.header(reqwest::header::AUTHORIZATION, auth);
+    // Follow redirects BY HAND, re-vetting every hop, exactly as
+    // fetch_remote_bytes and fetch_og_preview do.
+    //
+    // This client used to be built with no redirect policy at all, and reqwest
+    // 0.12 defaults to following up to ten. `.resolve()` pins only the ORIGINAL
+    // host, so a 3xx Location naming another host - or a literal private IP -
+    // was fetched without ever passing resolve_public_addrs/is_disallowed_ip.
+    // A single 302 from the media host was enough to reach loopback, RFC1918 or
+    // 169.254.169.254.
+    let mut current = parsed.clone();
+    let mut resp = None;
+    for _hop in 0..10u8 {
+        let hop_client = build_icon_client(&current, trusted_homeserver_origin.as_deref()).await?;
+        let mut req = hop_client.get(current.as_str());
+        // The credential rides only on the FIRST hop and only to the
+        // homeserver's own media endpoint. reqwest would strip it across hosts
+        // anyway; not re-attaching it after a redirect makes that explicit.
+        if is_homeserver_media && current == parsed {
+            if let Some(auth) = auth_header.as_deref().filter(|s| !s.is_empty()) {
+                req = req.header(reqwest::header::AUTHORIZATION, auth);
+            }
         }
+        let hop_resp = req.send().await.map_err(|e| format!("send: {e}"))?;
+        let status = hop_resp.status();
+        if status.is_redirection() {
+            let loc = hop_resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "redirect without location".to_string())?;
+            let next = current
+                .join(loc)
+                .map_err(|e| format!("bad redirect target: {e}"))?;
+            match next.scheme() {
+                "http" | "https" => {}
+                other => return Err(format!("scheme not allowed: {other}")),
+            }
+            // A redirect that leaves the trusted homeserver origin loses the
+            // guard relaxation and is vetted like any other public URL.
+            current = next;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+        resp = Some(hop_resp);
+        break;
     }
-    let resp = req.send().await.map_err(|e| format!("send: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = resp.ok_or_else(|| "too many redirects".to_string())?;
     let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -1626,7 +1736,14 @@ pub fn run() {
                         // else has to have armed a one-shot window just before
                         // asking. The one-shot is consumed either way, so two
                         // requests never ride on one arming.
-                        let in_call = session.0.lock().map(|guard| *guard).unwrap_or(false);
+                        // Expired sessions close the gate. A deadline in the
+                        // past is treated exactly like "no call".
+                        let in_call = session
+                            .0
+                            .lock()
+                            .ok()
+                            .and_then(|guard| *guard)
+                            .is_some_and(|until| std::time::Instant::now() < until);
                         let armed = intent
                             .0
                             .lock()

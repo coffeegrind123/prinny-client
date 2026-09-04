@@ -148,11 +148,24 @@ class ShareTargetPlugin(private val activity: Activity) : Plugin(activity) {
                     Log.w(TAG, "Share carried more than $MAX_SHARED_FILES files; dropping the rest")
                     break
                 }
-                // Only content:// and file:// are meaningful as a stream. A
-                // provider is free to hand over anything, so filter rather than
-                // trusting the scheme to be sane.
+                // content:// ONLY.
+                //
+                // file:// used to be accepted here too, and readSharedFile opens
+                // whatever it is handed with contentResolver.openInputStream -
+                // which for a file:// URI is a plain open performed with THIS
+                // app's uid, not a grant the sender held. Any installed app
+                // could therefore name a path inside our own private data
+                // directory (the WebView store holding the access token and
+                // E2EE material) and have us read it out and stage it as an
+                // outgoing attachment.
+                //
+                // A content URI is a capability the sender must actually have
+                // been granted, which is the property a share is supposed to
+                // convey. Legitimate senders on every supported Android version
+                // send content URIs; a file:// URI in a cross-app share is
+                // already a StrictMode violation on API 24+.
                 val scheme = uri.scheme?.lowercase()
-                if (scheme != "content" && scheme != "file") {
+                if (scheme != "content") {
                     Log.w(TAG, "Ignoring shared stream with scheme: $scheme")
                     continue
                 }

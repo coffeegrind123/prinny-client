@@ -205,10 +205,22 @@ jobs:
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through `env:`, never interpolated into the script body.
+          # A `${{ }}` expression is substituted textually BEFORE bash parses the
+          # line, so a tag named `v1$(id)` would have executed here - in the same
+          # workflow that later holds TAURI_SIGNING_PRIVATE_KEY and the Android
+          # keystore secrets. git check-ref-format permits `$`, backticks and
+          # quotes in a ref name, so the tag is the untrusted input.
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_REF: ${{ github.ref }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "Auto-detected tag: ${{ github.ref_name }}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Refusing tag '$REF_NAME': expected vMAJOR.MINOR.PATCH"
+              exit 1
+            fi
+            echo "tag=$REF_NAME" >> $GITHUB_OUTPUT
+            echo "Auto-detected tag: $REF_NAME"
           else
             LATEST_TAG=$(git tag --sort=-v:refname | grep '^v' | head -1 || true)
             if [ -z "$LATEST_TAG" ]; then
