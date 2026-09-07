@@ -194,12 +194,21 @@ fn host_is_private_literal(host: &str) -> bool {
 
 // ---- SSRF / remote-fetch guards -------------------------------------------
 
-// Media hosts our frontend legitimately proxies through `fetch_remote_bytes`
-// (Twitter/X CDN via vxtwitter, Bluesky video/image CDN). Suffix-matched, so
-// every subdomain (video.twimg.com, pbs.twimg.com, video.bsky.app,
-// cdn.bsky.app, …) is covered. Keep this list tight — it is the allowlist that
-// stops the command being used as a generic SSRF primitive.
-const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app"];
+// Media hosts our frontend legitimately fetches bytes for through
+// `fetch_remote_bytes` (Twitter/X CDN via vxtwitter, Bluesky video/image CDN,
+// rule34's image and mp4 CDNs behind the post embed). Suffix-matched, so every
+// subdomain (video.twimg.com, pbs.twimg.com, video.bsky.app, cdn.bsky.app,
+// api-cdn.rule34.xxx, api-cdn-mp4.rule34.xxx, …) is covered. Keep this list
+// tight — it is the allowlist that stops the command being used as a generic
+// SSRF primitive.
+//
+// MUST STAY IN SYNC WITH `ALLOWED_MEDIA_HOSTS` in the frontend's
+// `src/app/utils/tauri-media-proxy.ts`. That file keeps a second, narrower
+// list beside it (`PROXY_REQUIRED_MEDIA_HOSTS`) naming the hosts that actually
+// have to be routed through this command in order to render at all; rule34 is
+// permitted here for the media feed's Download control, but its CDNs hotlink
+// fine and render straight from the URL.
+const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app", "rule34.xxx"];
 
 // Upper bound on any single media or notification-icon fetch. These commands
 // proxy URLs chosen by remote message content, so without a cap the sender

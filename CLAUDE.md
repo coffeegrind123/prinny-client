@@ -200,6 +200,7 @@ git log --oneline <last-synced-sha>..upstream/dev --reverse --no-merges
 #   - MobileSwipeBack in Room
 #   - tauri-plugin entries in package-lock.json
 #   - vxtwitter API client-side fetch (useVxTwitter setting) for Twitter/X media
+#   - Bluesky / Rule34 post embeds (utils/socialEmbed.ts, utils/rule34.ts)
 #   - FocusTrap fallback for image viewer
 
 # After all cherry-picks done, update UPSTREAM_BACKPORT_LOG.md with status
@@ -218,7 +219,7 @@ git commit -m "Update cinny submodule"
 
 | File | Why |
 |------|-----|
-| `src/app/components/url-preview/UrlPreviewCard.tsx` | Heavily customized — YouTube (Piped), Twitter/X (vxtwitter direct media), Bandcamp og:video, SoundCloud (soundcloak), generic mp4/webm video, audio (mp3/ogg/etc.), dismiss button, expand/collapse. Upstream keeps this file simple. |
+| `src/app/components/url-preview/UrlPreviewCard.tsx` | Heavily customized — YouTube (Piped), Twitter/X (vxtwitter direct media), Bluesky posts + profiles, Rule34 posts, Hacker News, Bandcamp og:video, SoundCloud (soundcloak), generic mp4/webm video, audio (mp3/ogg/etc.), dismiss button, expand/collapse. Upstream keeps this file simple. |
 | `src/app/features/room-nav/RoomNavItem.tsx` | Presence badges + call permissions logic both modify imports and handlers |
 | `src/app/features/room/Room.tsx` | Our MobileSwipeBack import vs upstream's call embed imports |
 | `package-lock.json` | We have extra deps (tauri-plugin-mobile-push-api etc.) not in upstream |
@@ -1083,6 +1084,53 @@ Measured in Chromium at `https://prinny.app`, same URL, same session:
 |---|---|
 | `<video referrerpolicy="no-referrer" src=…mp4>` | 403, `MediaError code 4` |
 | `fetch(…, { referrerPolicy: 'no-referrer' })` | 200, `video/mp4`, plays from blob |
+
+### Rule34 embeds: three answers the API serves with a `200`
+
+`utils/rule34.ts` + the Rule34 arm of `utils/socialEmbed.ts` render a linked
+`rule34.xxx/index.php?page=post&s=view&id=N` as the post's own image, GIF or
+video. The `dapi` it talks to is Gelbooru 0.2, and everything expensive about
+integrating it comes from the fact that it reports failure **in the body, with
+a `200` and `resp.ok === true`**. Measured against the live API, not read off a
+wiki:
+
+| request | status | body |
+|---|---|---|
+| no `api_key`/`user_id` | 200 | the JSON **string** `"Missing authentication. Go to api.rule34.xxx for more information"` |
+| an id that does not exist | 200 | **zero bytes** — not `[]`, not `null` |
+| a query that matched nothing | 200 | `[]` |
+| a real post | 200 | `[{…}]` |
+
+So `resp.json()` is wrong in two opposite directions: it throws `SyntaxError`
+on the empty body (which the shared retry layer would read as a flaky network
+and ask twice more for) and it parses the auth error *cleanly* into a value
+that simply is not a post. `readPostResponse` classifies all four before
+anything downstream sees them, and the missing-key case is logged at `error`
+level by name — it is a deployment fault, and without a distinct message it
+presents exactly as "rule34 embeds don't work".
+
+Three more things worth not re-deriving:
+
+- **There is no keyless mode.** The key ships in the bundle like the Klipy GIF
+  key does (`VITE_RULE34_API_KEY` / `VITE_RULE34_USER_ID` override it), so it
+  is in the query string of every request — which is why `embedFetch.ts`
+  redacts credential-bearing parameters before logging a failed URL.
+- **The JSON post shape carries no tag *types*.** Categorised tags
+  (artist/character/copyright) live only in the `s=tag` XML endpoint, which
+  takes one exact `name=` per request and ignores both `json=1` and a plural
+  `names=`. A post routinely has 100+ tags, so a card cannot categorise them;
+  it shows the list as rule34 orders it rather than inventing an artist line.
+  (The post *page* HTML does have `tag-type-artist` classes and no CORS
+  headers, so it is unreachable from the web build.)
+- **The CDNs hotlink fine and send no CORS headers.** `api-cdn.rule34.xxx` and
+  `api-cdn-mp4.rule34.xxx` answer a ranged GET carrying a cross-origin
+  `Referer` with a 206. That is the opposite of twimg above, so they must NOT
+  go through the referrer-stripping fetch — hence the split between
+  `ALLOWED_MEDIA_HOSTS` (permission to fetch bytes, needed for the media feed's
+  Download) and `PROXY_REQUIRED_MEDIA_HOSTS` (hosts that must be proxied to
+  render at all) in `tauri-media-proxy.ts`. Routing rule34 through the proxy is
+  a regression, not a precaution: the in-page fetch cannot succeed without
+  CORS, and rule34 videos overrun the native proxy's 64 MiB whole-file buffer.
 
 ### folds `<Scroll>` does not scroll inside `<Modal flexHeight>` when it is wrapped
 
