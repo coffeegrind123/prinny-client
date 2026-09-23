@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-custom-css-edit"
+description = "Enables the custom_css_edit command without any pre-configured scope."
+commands.allow = ["custom_css_edit"]
+
+[[permission]]
+identifier = "deny-custom-css-edit"
+description = "Denies the custom_css_edit command without any pre-configured scope."
+commands.deny = ["custom_css_edit"]

@@ -37,6 +37,8 @@
     "deep-link:allow-get-current",
     "allow-send-windows-message-toast",
     "allow-start-rich-presence-bridge",
-    "allow-stop-rich-presence-bridge"
+    "allow-stop-rich-presence-bridge",
+    "allow-custom-css-edit",
+    "allow-custom-css-stop"
   ]
 }

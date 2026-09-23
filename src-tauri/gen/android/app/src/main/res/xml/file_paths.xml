@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Scoped to the app-private external files Download directory only. The single
-  FileProvider consumer is UpdateChecker.kt, which stages the update APK at
+  Two entries, each scoped to one app-private directory. apk_downloads: the
+  consumer is UpdateChecker.kt, which stages the update APK at
   getExternalFilesDir(DIRECTORY_DOWNLOADS)/cinny-v<version>.apk and exposes it
   via getUriForFile() for the install intent.
 
@@ -13,7 +13,15 @@
   fully predictable filename, so another app could plant or swap the APK we
   then asked the package installer to install. Earlier still, path="." entries
   exposed the entire external-storage and cache roots.
+
+  custom_css: CustomCssEditorPlugin.kt writes the custom-CSS file to
+  filesDir/custom-css/prinny.css and shares it with an editor through
+  ACTION_EDIT. <files-path> roots at the app-PRIVATE getFilesDir(), and the
+  entry names only that directory, so the only thing it can expose is the file
+  the plugin put there, and only to the app the user picked, for that one
+  intent's grant.
 -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
   <external-files-path name="apk_downloads" path="Download/" />
+  <files-path name="custom_css" path="custom-css/" />
 </paths>

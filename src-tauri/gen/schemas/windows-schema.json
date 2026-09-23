@@ -357,6 +357,18 @@
           "markdownDescription": "Enables the cache_notification_icon command without any pre-configured scope."
         },
         {
+          "description": "Enables the custom_css_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-custom-css-edit",
+          "markdownDescription": "Enables the custom_css_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the custom_css_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-custom-css-stop",
+          "markdownDescription": "Enables the custom_css_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the fetch_og_preview command without any pre-configured scope.",
           "type": "string",
           "const": "allow-fetch-og-preview",
@@ -433,6 +445,18 @@
           "type": "string",
           "const": "deny-cache-notification-icon",
           "markdownDescription": "Denies the cache_notification_icon command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the custom_css_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-custom-css-edit",
+          "markdownDescription": "Denies the custom_css_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the custom_css_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-custom-css-stop",
+          "markdownDescription": "Denies the custom_css_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the fetch_og_preview command without any pre-configured scope.",
@@ -2557,6 +2581,60 @@
           "type": "string",
           "const": "core:window:deny-unminimize",
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
+        },
+        {
+          "description": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-edit`\n- `allow-read-file`\n- `allow-export-file`\n- `allow-import-file`",
+          "type": "string",
+          "const": "custom-css-editor:default",
+          "markdownDescription": "Default plugin permissions.\n#### This default permission set includes:\n\n- `allow-edit`\n- `allow-read-file`\n- `allow-export-file`\n- `allow-import-file`"
+        },
+        {
+          "description": "Enables the edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:allow-edit",
+          "markdownDescription": "Enables the edit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:allow-export-file",
+          "markdownDescription": "Enables the export_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:allow-import-file",
+          "markdownDescription": "Enables the import_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the read_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:allow-read-file",
+          "markdownDescription": "Enables the read_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:deny-edit",
+          "markdownDescription": "Denies the edit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:deny-export-file",
+          "markdownDescription": "Denies the export_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:deny-import-file",
+          "markdownDescription": "Denies the import_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the read_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "custom-css-editor:deny-read-file",
+          "markdownDescription": "Denies the read_file command without any pre-configured scope."
         },
         {
           "description": "Allows reading the opened deep link via the get_current command\n#### This default permission set includes:\n\n- `allow-get-current`",

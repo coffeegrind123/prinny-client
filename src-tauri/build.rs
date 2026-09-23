@@ -35,6 +35,8 @@ const APP_COMMANDS: &[&str] = &[
     "set_content_protection",
     "start_rich_presence_bridge",
     "stop_rich_presence_bridge",
+    "custom_css_edit",
+    "custom_css_stop",
 ];
 
 /// The Android plugins declared inline in `lib.rs` with
@@ -93,6 +95,10 @@ const ANDROID_PLUGINS: &[AndroidPlugin] = &[
             "registerListener",
             "removeListener",
         ],
+    },
+    AndroidPlugin {
+        name: "custom-css-editor",
+        commands: &["edit", "read_file", "export_file", "import_file"],
     },
 ];
 

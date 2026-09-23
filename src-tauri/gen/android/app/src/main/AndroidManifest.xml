@@ -25,6 +25,21 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- Package visibility (Android 11+): without this, queryIntentActivities
+         in CustomCssEditorPlugin.kt sees no editors at all and custom CSS's
+         "Edit in text editor" would always report that none is installed.
+         Scoped to exactly the two intents it asks about. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.EDIT" />
+            <data android:mimeType="text/css" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.EDIT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 

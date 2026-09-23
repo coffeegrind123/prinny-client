@@ -17,6 +17,7 @@ use tauri_plugin_opener::OpenerExt;
 
 mod taskbar;
 mod rich_presence;
+mod custom_css;
 
 // Paths the user actually dropped onto the window via the OS native drag-drop
 // path. `read_dropped_file` only reads paths that appear here, so a malicious
@@ -452,6 +453,22 @@ fn share_target_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             #[cfg(target_os = "android")]
             {
                 let _handle = api.register_android_plugin("in.prinny.app", "ShareTargetPlugin")?;
+            }
+            #[cfg(not(target_os = "android"))]
+            let _ = &api;
+            Ok(())
+        })
+        .build()
+}
+
+// Custom CSS "Edit in your text editor" on Android (CustomCssEditorPlugin.kt).
+// Desktop does the same job with the `custom_css_edit` app command instead.
+fn custom_css_editor_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("custom-css-editor")
+        .setup(|_app, api| {
+            #[cfg(target_os = "android")]
+            {
+                let _handle = api.register_android_plugin("in.prinny.app", "CustomCssEditorPlugin")?;
             }
             #[cfg(not(target_os = "android"))]
             let _ = &api;
@@ -1486,6 +1503,7 @@ pub fn run() {
 
     builder = builder
         .manage(rich_presence::RichPresenceBridge::default())
+        .manage(custom_css::CustomCssWatch::default())
         .manage(DroppedPaths::default())
         .manage(HomeserverOrigin::default())
         // Record the real OS paths from each native drag-drop so that
@@ -1524,6 +1542,8 @@ pub fn run() {
             set_content_protection,
             rich_presence::start_rich_presence_bridge,
             rich_presence::stop_rich_presence_bridge,
+            custom_css::custom_css_edit,
+            custom_css::custom_css_stop,
         ])
         // Registered AFTER single-instance and BEFORE localhost on purpose.
         // Plugin setups run in registration order, so by the time this probes
@@ -1540,6 +1560,7 @@ pub fn run() {
         .plugin(foreground_plugin())
         .plugin(message_notification_plugin())
         .plugin(share_target_plugin())
+        .plugin(custom_css_editor_plugin())
         // All platforms. On Android the scheme is registered by the manifest's
         // intent filter rather than by the plugin, but the launch intent still
         // has to be read and handed to the frontend, and that is this plugin.

@@ -26,6 +26,7 @@
     "unifiedpush:default",
     "foreground:default",
     "message-notification:default",
-    "share-target:default"
+    "share-target:default",
+    "custom-css-editor:default"
   ]
 }
