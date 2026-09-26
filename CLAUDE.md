@@ -1154,6 +1154,25 @@ flex: 1 1 0; min-height: 0`) on the `<Scroll>`. **Do not apply it to the direct
 shape** — there it collapses the modal to header height, because a `flex-basis:
 0` child leaves the content-sized modal with no content to size to.
 
+### Reproduce UI bugs live before fixing them — `context/live-testing.md`
+
+For any bug in how the web client behaves (composer, focus, popups, keybinds,
+timeline, downloads), reproduce it first in the real client. That means a
+throwaway Conduit homeserver in Docker, a production build served locally, and
+Chrome driven with **trusted** input:
+
+```bash
+scripts/live-test/homeserver.sh up && scripts/live-test/homeserver.sh seed
+scripts/live-test/serve.sh build && scripts/live-test/serve.sh start
+node scripts/live-test/cdp.mjs login "$PRINNY_LIVE_DIR/alice.json"   # after start_browser + navigate
+```
+
+The backwards-text bug had five reasoned fixes and survived every one; the
+live loop found the real cause in one session. Do not drive it with the browser
+MCP's `press_key`, `type_text` or `human_type`: they skip the real keydown path,
+which is where these bugs live. Use `cdp.mjs`. The guide has the full setup,
+recipes and a gotchas table.
+
 ### Use cargo check before committing Rust changes
 
 A full platform build takes 20+ minutes in CI. `cargo check` catches compilation errors in seconds:
