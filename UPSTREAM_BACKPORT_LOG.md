@@ -6,8 +6,8 @@ Tracks upstream `cinnyapp/cinny-desktop` commits reviewed for this fork
 The cinny **submodule** has its own log — `cinny/UPSTREAM_BACKPORT_LOG.md`. This
 file covers the Tauri desktop shell only.
 
-**Last sync:** 2026-08-10 (upstream `main` @ `5c57861`, v4.12.6)
-**Start from:** `5c57861` — next time, fetch upstream and check commits AFTER this one
+**Last sync:** 2026-09-26 (upstream `main` @ `d3627de`, v4.12.7)
+**Start from:** `d3627de` — next time, fetch upstream and check commits AFTER this one
 
 Status: `[x]` backported · `[-]` skipped · `[~]` partial/adapted · `[ ]` pending
 
@@ -59,7 +59,21 @@ Range: `24d34c7..upstream/main` (`5c57861`) — 27 commits.
 | 24 | `2cd5829` | `[x]` | fix: bypass proxy for embedded localhost UI (#605) | Applies directly — we serve the frontend through `tauri-plugin-localhost` on 127.0.0.1:44548 exactly as upstream does, so an env-set HTTP proxy would swallow the request and the window would come up blank. Dropped the trailing whitespace upstream left behind and documented the loop |
 | 25 | `69e8640` | `[-]` | chore: bump softprops/action-gh-release 3.0.0 → 3.0.2 (#607) | Upstream-only workflows |
 | 26 | `0f08c3a` | `[x]` | fix: permanently white MacOS titlebar (#610) | Applies — we ship a macOS universal build. Adapted: upstream collapsed the builder into one expression, which here would have dropped our `#[cfg(not(mobile))]` title/inner_size blocks and re-added `.disable_drag_drop_handler()`. Kept our `mut` builder and added the macOS branch as another cfg block; gated the `TitleBarStyle` import on macOS since `title_bar_style` is itself macOS-only |
-| 27 | `5c57861` | `[-]` | chore: Release v4.12.6 (#611) | Release stamp — **START HERE next sync** |
+| 27 | `5c57861` | `[-]` | chore: Release v4.12.6 (#611) | Release stamp |
+
+## 2026-09-26 sync session
+
+Range: `5c57861..upstream/main` (`d3627de`) — 5 commits. Nothing applicable.
+
+| # | SHA | Status | Description | Notes |
+|---|-----|--------|-------------|-------|
+| 1 | `4242ba4` | `[-]` | chore: bump actions/checkout 6.0.2 → 7.0.1 (#609) | Upstream-only workflows — ours pin checkout by SHA and are maintained separately |
+| 2 | `35c467d` | `[-]` | chore: bump actions/setup-node 6.4.0 → 7.0.0 (#608) | Upstream-only workflows |
+| 3 | `f1711fc` | `[-]` | chore: add a checkbox for contribution policy (#617) | Issue template |
+| 4 | `6849c2c` | `[-]` | chore: bump softprops/action-gh-release 3.0.2 → 3.0.3 (#616) | Upstream-only workflows |
+| 5 | `d3627de` | `[-]` | chore: Release v4.12.7 (#618) | Release stamp — **START HERE next sync** |
+
+Recorded with `git merge -s ours upstream/main` (see below).
 
 ---
 
@@ -130,7 +144,7 @@ free here — syncs are driven by the START HERE marker below and applied with
 git fetch upstream
 
 # 2. Check what's new since the "START HERE" marker above
-git log --oneline 5c57861..upstream/main --reverse
+git log --oneline d3627de..upstream/main --reverse
 
 # 3. Triage against the "Why so much is skipped" table — most upstream churn
 #    lands on CI/updater/versioning subsystems we replaced wholesale.
