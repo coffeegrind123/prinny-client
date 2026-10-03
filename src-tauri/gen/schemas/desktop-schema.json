@@ -375,6 +375,12 @@
           "markdownDescription": "Enables the fetch_og_preview command without any pre-configured scope."
         },
         {
+          "description": "Enables the fetch_reddit_post command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fetch-reddit-post",
+          "markdownDescription": "Enables the fetch_reddit_post command without any pre-configured scope."
+        },
+        {
           "description": "Enables the fetch_remote_bytes command without any pre-configured scope.",
           "type": "string",
           "const": "allow-fetch-remote-bytes",
@@ -463,6 +469,12 @@
           "type": "string",
           "const": "deny-fetch-og-preview",
           "markdownDescription": "Denies the fetch_og_preview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the fetch_reddit_post command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fetch-reddit-post",
+          "markdownDescription": "Denies the fetch_reddit_post command without any pre-configured scope."
         },
         {
           "description": "Denies the fetch_remote_bytes command without any pre-configured scope.",

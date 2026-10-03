@@ -18,6 +18,7 @@ use tauri_plugin_opener::OpenerExt;
 mod taskbar;
 mod rich_presence;
 mod custom_css;
+mod reddit;
 
 // Paths the user actually dropped onto the window via the OS native drag-drop
 // path. `read_dropped_file` only reads paths that appear here, so a malicious
@@ -206,10 +207,10 @@ fn host_is_private_literal(host: &str) -> bool {
 // MUST STAY IN SYNC WITH `ALLOWED_MEDIA_HOSTS` in the frontend's
 // `src/app/utils/tauri-media-proxy.ts`. That file keeps a second, narrower
 // list beside it (`PROXY_REQUIRED_MEDIA_HOSTS`) naming the hosts that actually
-// have to be routed through this command in order to render at all; rule34 is
-// permitted here for the media feed's Download control, but its CDNs hotlink
-// fine and render straight from the URL.
-const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app", "rule34.xxx"];
+// have to be routed through this command in order to render at all; rule34 and
+// Reddit (`redd.it`) are permitted here for the media feed's Download control,
+// but their CDNs hotlink fine and render straight from the URL.
+const ALLOWED_MEDIA_HOSTS: &[&str] = &["twimg.com", "bsky.app", "rule34.xxx", "redd.it"];
 
 // Upper bound on any single media or notification-icon fetch. These commands
 // proxy URLs chosen by remote message content, so without a cap the sender
@@ -1535,6 +1536,7 @@ pub fn run() {
             read_dropped_file,
             fetch_remote_bytes,
             fetch_og_preview,
+            reddit::fetch_reddit_post,
             probe_push_gateway,
             send_windows_message_toast,
             arm_capture_intent,

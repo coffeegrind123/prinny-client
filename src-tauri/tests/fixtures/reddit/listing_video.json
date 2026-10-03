@@ -1,0 +1,98 @@
+[
+ {
+  "kind": "Listing",
+  "data": {
+   "children": [
+    {
+     "kind": "t3",
+     "data": {
+      "id": "1wwkjn3",
+      "name": "t3_1wwkjn3",
+      "title": "Funny waterfall video",
+      "author": "Fickle-Aide9279",
+      "subreddit": "funny",
+      "score": 1,
+      "num_comments": 1,
+      "over_18": false,
+      "created_utc": 1791025542,
+      "permalink": "/r/funny/comments/1wwkjn3/funny_waterfall_video/",
+      "url": "https://v.redd.it/oho9co2hi8th1",
+      "url_overridden_by_dest": "https://v.redd.it/oho9co2hi8th1",
+      "domain": "v.redd.it",
+      "post_hint": "hosted:video",
+      "is_video": true,
+      "media": {
+       "reddit_video": {
+        "bitrate_kbps": 800,
+        "fallback_url": "https://v.redd.it/oho9co2hi8th1/CMAF_360.mp4?source=fallback",
+        "has_audio": true,
+        "height": 640,
+        "width": 360,
+        "scrubber_media_url": "https://v.redd.it/oho9co2hi8th1/CMAF_96.mp4",
+        "dash_url": "https://v.redd.it/oho9co2hi8th1/DASHPlaylist.mpd?a=1793617563%2CN2I4Y2MzNjM5NzM3YjFhMDQ5YjNmYTUyZjNiN2JkMmRiZjE0N2NjZGMwYmVmMjI4MWI5M2IxYWYzZGJjOGJmOQ%3D%3D&v=1&f=sd",
+        "duration": 10,
+        "hls_url": "https://v.redd.it/oho9co2hi8th1/HLSPlaylist.m3u8?a=1793617563%2CY2YxY2E1ZWJhMzEyZTAyYzJmMzY2NjAyMDM2Zjc4Yjk4OTFkNWI0MTkwZjg2NWJhN2QwOTdmZmU1NTZjNGMwZA%3D%3D&v=1&f=sd",
+        "is_gif": false,
+        "transcoding_status": "completed"
+       }
+      },
+      "secure_media": {
+       "reddit_video": {
+        "bitrate_kbps": 800,
+        "fallback_url": "https://v.redd.it/oho9co2hi8th1/CMAF_360.mp4?source=fallback",
+        "has_audio": true,
+        "height": 640,
+        "width": 360,
+        "scrubber_media_url": "https://v.redd.it/oho9co2hi8th1/CMAF_96.mp4",
+        "dash_url": "https://v.redd.it/oho9co2hi8th1/DASHPlaylist.mpd?a=1793617563%2CN2I4Y2MzNjM5NzM3YjFhMDQ5YjNmYTUyZjNiN2JkMmRiZjE0N2NjZGMwYmVmMjI4MWI5M2IxYWYzZGJjOGJmOQ%3D%3D&v=1&f=sd",
+        "duration": 10,
+        "hls_url": "https://v.redd.it/oho9co2hi8th1/HLSPlaylist.m3u8?a=1793617563%2CY2YxY2E1ZWJhMzEyZTAyYzJmMzY2NjAyMDM2Zjc4Yjk4OTFkNWI0MTkwZjg2NWJhN2QwOTdmZmU1NTZjNGMwZA%3D%3D&v=1&f=sd",
+        "is_gif": false,
+        "transcoding_status": "completed"
+       }
+      },
+      "preview": {
+       "images": [
+        {
+         "source": {
+          "url": "https://external-preview.redd.it/NmJzNDRsd2dpOHRoMXBVfsq00vaX5aWI8GIQ-VbBBisGhe7MWmLGMm_Fd2bo.jpeg?format=pjpg&auto=webp&s=21562d61cfb7ebdf2b751cf278f1b08103586fe0",
+          "width": 360,
+          "height": 640
+         },
+         "resolutions": [
+          {
+           "url": "https://external-preview.redd.it/NmJzNDRsd2dpOHRoMXBVfsq00vaX5aWI8GIQ-VbBBisGhe7MWmLGMm_Fd2bo.jpeg?width=108&crop=smart&format=pjpg&auto=webp&s=e4f0883a8ac3406e6c53588f6eed6e7d7c1b8fe3",
+           "width": 108,
+           "height": 192
+          },
+          {
+           "url": "https://external-preview.redd.it/NmJzNDRsd2dpOHRoMXBVfsq00vaX5aWI8GIQ-VbBBisGhe7MWmLGMm_Fd2bo.jpeg?width=216&crop=smart&format=pjpg&auto=webp&s=efd4c400359aad49cfa123a2aae4254b60ac4ba5",
+           "width": 216,
+           "height": 384
+          },
+          {
+           "url": "https://external-preview.redd.it/NmJzNDRsd2dpOHRoMXBVfsq00vaX5aWI8GIQ-VbBBisGhe7MWmLGMm_Fd2bo.jpeg?width=320&crop=smart&format=pjpg&auto=webp&s=dd95445ab3d9e416a74b9ae1b94207cac96a7a18",
+           "width": 320,
+           "height": 568
+          }
+         ],
+         "variants": {},
+         "id": "NmJzNDRsd2dpOHRoMXBVfsq00vaX5aWI8GIQ-VbBBisGhe7MWmLGMm_Fd2bo"
+        }
+       ],
+       "enabled": false
+      },
+      "removed_by_category": null,
+      "selftext": ""
+     }
+    }
+   ]
+  }
+ },
+ {
+  "kind": "Listing",
+  "data": {
+   "children": []
+  }
+ }
+]

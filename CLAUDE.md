@@ -200,7 +200,7 @@ git log --oneline <last-synced-sha>..upstream/dev --reverse --no-merges
 #   - MobileSwipeBack in Room
 #   - tauri-plugin entries in package-lock.json
 #   - vxtwitter API client-side fetch (useVxTwitter setting) for Twitter/X media
-#   - Bluesky / Rule34 post embeds (utils/socialEmbed.ts, utils/rule34.ts)
+#   - Bluesky / Rule34 / Reddit post embeds (utils/socialEmbed.ts, utils/rule34.ts, utils/reddit.ts)
 #   - FocusTrap fallback for image viewer
 
 # After all cherry-picks done, update UPSTREAM_BACKPORT_LOG.md with status
@@ -219,7 +219,7 @@ git commit -m "Update cinny submodule"
 
 | File | Why |
 |------|-----|
-| `src/app/components/url-preview/UrlPreviewCard.tsx` | Heavily customized — YouTube (Piped), Twitter/X (vxtwitter direct media), Bluesky posts + profiles, Rule34 posts, Hacker News, Bandcamp og:video, SoundCloud (soundcloak), generic mp4/webm video, audio (mp3/ogg/etc.), dismiss button, expand/collapse. Upstream keeps this file simple. |
+| `src/app/components/url-preview/UrlPreviewCard.tsx` | Heavily customized — YouTube (Piped), Twitter/X (vxtwitter direct media), Bluesky posts + profiles, Rule34 posts, Reddit posts, Hacker News, Bandcamp og:video, SoundCloud (soundcloak), generic mp4/webm video, audio (mp3/ogg/etc.), dismiss button, expand/collapse. Upstream keeps this file simple. |
 | `src/app/features/room-nav/RoomNavItem.tsx` | Presence badges + call permissions logic both modify imports and handlers |
 | `src/app/features/room/Room.tsx` | Our MobileSwipeBack import vs upstream's call embed imports |
 | `package-lock.json` | We have extra deps (tauri-plugin-mobile-push-api etc.) not in upstream |
@@ -1131,6 +1131,46 @@ Three more things worth not re-deriving:
   render at all) in `tauri-media-proxy.ts`. Routing rule34 through the proxy is
   a regression, not a precaution: the in-page fetch cannot succeed without
   CORS, and rule34 videos overrun the native proxy's 64 MiB whole-file buffer.
+
+### Reddit embeds: fetched by the shell, app-only
+
+`utils/reddit.ts` + `src-tauri/src/reddit.rs` (`fetch_reddit_post`) render a
+linked Reddit post's video, image or gallery inline. Measured 03.10.2026, from a
+residential connection — none of it is documented by Reddit:
+
+| request | result |
+|---|---|
+| `reddit.com/…/.json` (`www`/`old`/`api`, any UA, curl or real Chromium) | **403** "You've been blocked by network security" |
+| the post's HTML page in Chromium | "Prove your humanity" challenge |
+| `embed.reddit.com/r/{sub}/comments/{id}/` | 200, full media — but **no CORS headers** |
+| same, from **rustls at TLS 1.3** (any UA) | **403** — ClientHello is fingerprinted |
+| same, rustls capped at TLS 1.2, or OpenSSL | 200 |
+
+So: the page cannot read Reddit at all (no CORS), the request goes through the
+Rust command, and **the embed does not exist on the web build**. The command
+pins `max_tls_version(TLS_1_2)` — remove it and every Reddit embed 403s.
+native-tls also passes but would drag OpenSSL into the Android build.
+
+Things worth not re-deriving:
+
+- **Subreddit in the embed URL:** any *real* subreddit serves any post
+  (`r/pics/comments/<r/whatisit id>` works); `r/all` and nonexistent names
+  answer "Not supported post". Links without one use `pics` as a placeholder.
+  The `shreddit-screenview-data` subreddit just echoes the URL's — the true one
+  is the `shreddit-embed-copy-link-button` `permalink`.
+- **Video:** `packaged-media-json` lists muxed MP4s (audio included, ranged
+  206) signed `e=` a few hours out. `v.redd.it/{id}/HLSPlaylist.m3u8` with no
+  query is unsigned and stable. The card plays the MP4 and falls back to HLS on
+  error; `reddit.ts` caches a post only until its `expiresAt`.
+- **Gallery originals:** carousel shows `preview.redd.it/{slug}-v0-{mediaid}.{ext}`
+  (640px); the original is `i.redd.it/{mediaid}.{ext}`. Media ids are 13 chars.
+- **Media hosts** (`*.redd.it`) hotlink fine — `v.redd.it` even sends
+  `access-control-allow-origin: *` — so `redd.it` is in `ALLOWED_MEDIA_HOSTS`
+  (feed Download) but not `PROXY_REQUIRED_MEDIA_HOSTS`.
+- Share links `/r/{sub}/s/{token}` redirect even from blocked addresses; the
+  command reads only `Location` headers.
+- Tests: `cargo test --lib reddit` (fixtures in `src-tauri/tests/fixtures/reddit/`);
+  live: `cargo test --lib reddit -- --ignored --nocapture`.
 
 ### folds `<Scroll>` does not scroll inside `<Modal flexHeight>` when it is wrapped
 
