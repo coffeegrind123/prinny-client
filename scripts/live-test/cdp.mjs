@@ -15,6 +15,7 @@
  *   cdp.mjs reload
  *   cdp.mjs type <text> [delayMs]    one real keyDown/keyUp pair per character
  *   cdp.mjs key <Name>...            Enter Escape Tab Backspace Delete Arrow* Home End
+ *   cdp.mjs chord <mods+key>         e.g. ctrl+k, ctrl+shift+e, ctrl+shift+/ (trusted)
  *   cdp.mjs click <css>              trusted click at the element's centre
  *   cdp.mjs clickxy <x> <y>
  *   cdp.mjs hover <css>              move the pointer onto the element
@@ -124,6 +125,52 @@ const pressNamed = async (cdp, name) => {
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 };
 
+/** CDP `modifiers` bits. */
+const MODIFIER_BITS = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
+
+/** Physical key for a chord's final key — `code` is what hotkey matchers read. */
+const chordKey = (name) => {
+  if (NAMED_KEYS[name]) {
+    const [key, code, keyCode] = NAMED_KEYS[name];
+    return { key, code, keyCode };
+  }
+  if (/^[a-z]$/i.test(name)) {
+    return { key: name.toLowerCase(), code: `Key${name.toUpperCase()}`, keyCode: name.toUpperCase().charCodeAt(0) };
+  }
+  if (/^[0-9]$/.test(name)) return { key: name, code: `Digit${name}`, keyCode: name.charCodeAt(0) };
+  if (name === '/') return { key: '/', code: 'Slash', keyCode: 191 };
+  throw new Error(`unsupported chord key "${name}"`);
+};
+
+/**
+ * A modifier chord as Chrome sends it: each modifier held down, the key with
+ * the `modifiers` bitmask set, then everything released in reverse. Without
+ * the held modifiers' own keyDowns, handlers reading `evt.ctrlKey` still see
+ * it (that comes from the bitmask), but anything tracking held keys does not.
+ */
+const pressChord = async (cdp, spec) => {
+  const parts = spec.split('+');
+  const last = parts.pop();
+  let modifiers = 0;
+  const held = [];
+  for (const mod of parts) {
+    const bit = MODIFIER_BITS[mod.toLowerCase()];
+    if (!bit) throw new Error(`unknown modifier "${mod}" — one of ${Object.keys(MODIFIER_BITS).join(' ')}`);
+    modifiers |= bit;
+    const name = mod[0].toUpperCase() + mod.slice(1).toLowerCase();
+    const def = { key: name === 'Ctrl' ? 'Control' : name, code: `${name === 'Ctrl' ? 'Control' : name}Left`, modifiers };
+    held.push(def);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...def });
+  }
+  const { key, code, keyCode } = chordKey(last);
+  const base = { key, code, modifiers, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  for (const def of held.reverse()) {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...def, modifiers: 0 });
+  }
+};
+
 /**
  * Centre of the first match, read at the moment of use. Never reuse a position
  * across steps: banners like "Connecting to …" come and go and shift the whole
@@ -221,6 +268,12 @@ const main = async () => {
       case 'key':
         for (const name of args) {
           await pressNamed(cdp, name);
+          await sleep(50);
+        }
+        break;
+      case 'chord':
+        for (const spec of args) {
+          await pressChord(cdp, spec);
           await sleep(50);
         }
         break;
