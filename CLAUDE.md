@@ -1132,7 +1132,7 @@ Three more things worth not re-deriving:
   a regression, not a precaution: the in-page fetch cannot succeed without
   CORS, and rule34 videos overrun the native proxy's 64 MiB whole-file buffer.
 
-### Reddit embeds: fetched by the shell, app-only
+### Reddit embeds: the shell in the app, vxreddit on the web
 
 `utils/reddit.ts` + `src-tauri/src/reddit.rs` (`fetch_reddit_post`) render a
 linked Reddit post's video, image or gallery inline. Measured 03.10.2026, from a
@@ -1146,10 +1146,40 @@ residential connection — none of it is documented by Reddit:
 | same, from **rustls at TLS 1.3** (any UA) | **403** — ClientHello is fingerprinted |
 | same, rustls capped at TLS 1.2, or OpenSSL | 200 |
 
-So: the page cannot read Reddit at all (no CORS), the request goes through the
-Rust command, and **the embed does not exist on the web build**. The command
-pins `max_tls_version(TLS_1_2)` — remove it and every Reddit embed 403s.
-native-tls also passes but would drag OpenSSL into the Android build.
+So: the page cannot read Reddit at all (no CORS), and in the app the request
+goes through the Rust command. The command pins `max_tls_version(TLS_1_2)` —
+remove it and every Reddit embed 403s. native-tls also passes but would drag
+OpenSSL into the Android build.
+
+**The web build reads vxreddit.com instead** (github.com/dylanpdx/vxReddit).
+rxddit.com is dead — it answers every post with "Reddit blocked the request".
+vxreddit sends CORS, but only serves the post to a User-Agent on the
+`crawler-user-agents` "social-preview" list; anyone else gets a 302 to
+reddit.com. Measured 03.10.2026:
+
+| route | result |
+|---|---|
+| page `fetch` with a Discordbot UA, Firefox | 200, CORS, every gallery image |
+| same in Chromium | UA silently dropped → 302. Detectable offline: `new Request(u, {headers: {'User-Agent': x}}).headers.get('user-agent')` is `null` |
+| Synapse `preview_url` of the vxreddit URL | works — Synapse's UA `Synapse (bot; …)` is on the list |
+
+So `reddit.ts` goes direct where the browser keeps the UA, else through the
+homeserver's preview. What Synapse 1.156 hands back (checked against a real
+one, `matrixdotorg/synapse:v1.156.0`):
+
+- **One image only.** OG tags are folded into a dict, so a gallery's repeated
+  `og:image` → the *last* one, re-hosted as `mxc://`. Download in the media
+  feed goes by that mxc (`embedMxcUrl`), not the remote-media allowlist.
+- `og:video` untouched. A silent video is a direct `v.redd.it/{id}/CMAF_*.mp4`;
+  one with sound is vxreddit's `/redditvideo.mp4` muxer — a 307 to an AWS
+  Lambda, ~12 s cold — so the card plays `v.redd.it/{id}/HLSPlaylist.m3u8`
+  instead (unsigned, instant).
+- `og:description` is junk ("Redirecting... or click here.") whenever vxreddit
+  sent none — Synapse summarises the body. Not read.
+- `og:site_name` is vxreddit's stats line `u/{a} on r/{s} - ⬆️ N | 💬 M`. It is
+  also the proof vxreddit answered: a homeserver whose fetcher it does not
+  admit previews reddit.com, and that stock image must not render as the post.
+- Neither route reports NSFW or a post date.
 
 Things worth not re-deriving:
 
