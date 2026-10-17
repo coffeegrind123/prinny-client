@@ -342,7 +342,7 @@ jobs:
       # Rust deps via RustSec — also a real gate. `|| true` on the install line
       # meant a failed `cargo install` reported success and the audit never ran.
       #
-      # Two advisories are ignored, individually and with reasons, rather than
+      # Five advisories are ignored, individually and with reasons, rather than
       # lowering the gate (see the npm note above — same rule).
       #
       # RUSTSEC-2026-0194 (quadratic duplicate-attribute check) and
@@ -364,12 +364,35 @@ jobs:
       # REMOVE THESE IGNORES when tauri bumps plist, or plist/
       # tauri-winrt-notification move to quick-xml 0.41 — re-run without them
       # first and only re-add what still fires.
+      #
+      # RUSTSEC-2026-0367 (SUID/SGID bits preserved on extract),
+      # RUSTSEC-2026-0368 (`extract` creates symlinks escaping the destination)
+      # and RUSTSEC-2026-0369 (permissions applied through symlinks) are zip
+      # advisories fixed only in 9.0.0, with no 4.x backport. zip 4.6.1 comes
+      # from tauri-plugin-updater, and every release up to 2.14.0 requires
+      # `zip = "^4"`. The plugin's `zip` feature can't be dropped either: it
+      # also gates tar/flate2, and `createUpdaterArtifacts: "v1Compatible"`
+      # ships .nsis.zip / .AppImage.tar.gz / .app.tar.gz updates.
+      #
+      # Checked for reachability rather than assumed:
+      #   * The only caller is `extract_zip`, `cfg(target_os = "windows")` —
+      #     there are no SUID/SGID bits to preserve there (0367).
+      #   * Its bytes come only from `DownloadedBytes`, which `download`
+      #     creates after `verify_signature` against the minisign pubkey in
+      #     tauri.conf.json. A zip that reaches `extract` was signed with our
+      #     release key, and that key can already ship an arbitrary installer
+      #     that the updater runs, so 0368/0369 grant an attacker nothing.
+      #
+      # REMOVE THESE IGNORES when tauri-plugin-updater moves to zip >= 9.
       - name: cargo audit (gate)
         run: |
           cargo install cargo-audit --locked
           cargo audit --file src-tauri/Cargo.lock \
             --ignore RUSTSEC-2026-0194 \
-            --ignore RUSTSEC-2026-0195
+            --ignore RUSTSEC-2026-0195 \
+            --ignore RUSTSEC-2026-0367 \
+            --ignore RUSTSEC-2026-0368 \
+            --ignore RUSTSEC-2026-0369
 
   # ── Windows x86_64 ──────────────────────────────────────────────
   windows-x86_64:
