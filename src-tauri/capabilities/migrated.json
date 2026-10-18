@@ -1,6 +1,6 @@
 {
   "identifier": "migrated",
-  "description": "Permissions carried over from the Tauri v1 configuration, narrowed to what the frontend actually calls. This capability is granted to the remote origin below as well as to local assets, so every entry is reachable by whatever executes script in the page — treat additions accordingly. The unprefixed `allow-*` entries are the app's own commands from generate_handler!, declared in build.rs; without them Tauri's ACL rejects every invoke() from this origin, because tauri-plugin-localhost makes the app's own UI a remote origin.",
+  "description": "Permissions carried over from the Tauri v1 configuration, narrowed to what the frontend actually calls. This capability is granted to the remote origin below as well as to local assets, so every entry is reachable by whatever executes script in the page — treat additions accordingly. `opener:allow-open-url` is called by no frontend file: tauri-plugin-opener injects its own click listener that opens every target=_blank link through it, so without this grant every link tap in a message is swallowed silently (preventDefault, then a rejected invoke). The unprefixed `allow-*` entries are the app's own commands from generate_handler!, declared in build.rs; without them Tauri's ACL rejects every invoke() from this origin, because tauri-plugin-localhost makes the app's own UI a remote origin.",
   "local": true,
   "remote": {
     "urls": [
@@ -77,6 +77,10 @@
     "allow-probe-push-gateway",
     "allow-arm-capture-intent",
     "allow-set-capture-session",
-    "allow-set-content-protection"
+    "allow-set-content-protection",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://*" }, { "url": "https://*" }, { "url": "mailto:*" }]
+    }
   ]
 }

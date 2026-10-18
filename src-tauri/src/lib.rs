@@ -1666,7 +1666,7 @@ pub fn run() {
                     // `OpenerExt::open_url` called from Rust bypasses the
                     // capability system entirely, so the `opener:allow-open-url`
                     // scope in capabilities/migrated.json — which restricts the
-                    // IPC command to http/https — does NOT constrain this call.
+                    // IPC command to http/https/mailto — does NOT constrain this call.
                     // Testing only for `blob` meant any other scheme reaching
                     // here was dispatched to whatever local application is
                     // registered for it: `file:` and UNC targets (an outbound
