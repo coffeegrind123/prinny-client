@@ -18,6 +18,7 @@
  *   cdp.mjs chord <mods+key>         e.g. ctrl+k, ctrl+shift+e, ctrl+shift+/ (trusted)
  *   cdp.mjs click <css>              trusted click at the element's centre
  *   cdp.mjs clickxy <x> <y>
+ *   cdp.mjs wheel <x> <y> <dy>
  *   cdp.mjs hover <css>              move the pointer onto the element
  *   cdp.mjs composer                 composer text, DOM caret, focus, Slate model
  *   cdp.mjs eval <js>                evaluate an expression, print the value
@@ -284,6 +285,18 @@ const main = async () => {
       }
       case 'clickxy':
         await clickAt(cdp, Number(args[0]), Number(args[1]));
+        break;
+      // A trusted wheel at x,y — negative dy scrolls up. Setting scrollTop from
+      // `eval` is not input: it fires no wheel/pointer event, so anything that
+      // tells the reader's scrolling apart from the app's never sees it.
+      case 'wheel':
+        await cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseWheel',
+          x: Number(args[0]),
+          y: Number(args[1]),
+          deltaX: 0,
+          deltaY: Number(args[2]),
+        });
         break;
       case 'hover': {
         const { x, y } = await centreOf(cdp, args[0]);
