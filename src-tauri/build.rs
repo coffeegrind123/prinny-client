@@ -101,6 +101,10 @@ const ANDROID_PLUGINS: &[AndroidPlugin] = &[
         name: "custom-css-editor",
         commands: &["edit", "read_file", "export_file", "import_file"],
     },
+    AndroidPlugin {
+        name: "window-background",
+        commands: &["set_color"],
+    },
 ];
 
 fn main() {

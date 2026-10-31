@@ -462,6 +462,21 @@ fn share_target_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+// Android window background kept in the app theme (WindowBackgroundPlugin.kt).
+fn window_background_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("window-background")
+        .setup(|_app, api| {
+            #[cfg(target_os = "android")]
+            {
+                let _handle = api.register_android_plugin("in.prinny.app", "WindowBackgroundPlugin")?;
+            }
+            #[cfg(not(target_os = "android"))]
+            let _ = &api;
+            Ok(())
+        })
+        .build()
+}
+
 // Custom CSS "Edit in your text editor" on Android (CustomCssEditorPlugin.kt).
 // Desktop does the same job with the `custom_css_edit` app command instead.
 fn custom_css_editor_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -1563,6 +1578,7 @@ pub fn run() {
         .plugin(message_notification_plugin())
         .plugin(share_target_plugin())
         .plugin(custom_css_editor_plugin())
+        .plugin(window_background_plugin())
         // All platforms. On Android the scheme is registered by the manifest's
         // intent filter rather than by the plugin, but the launch intent still
         // has to be read and handed to the frontend, and that is this plugin.

@@ -27,6 +27,7 @@
     "foreground:default",
     "message-notification:default",
     "share-target:default",
-    "custom-css-editor:default"
+    "custom-css-editor:default",
+    "window-background:default"
   ]
 }
