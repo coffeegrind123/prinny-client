@@ -326,6 +326,81 @@ Status of the round-2 implementation: `handoff/PORT-PLAN-2026-10-31.md`.
 5. Close the round: append a "Round N" section to the source's ledger with the fork tip SHA and
    date, and move the START HERE marker in the table above.
 
+## Element Call patch queue
+
+> **Before touching call code** (`cinny/src/app/plugins/call/`, `CallEmbed*`,
+> anything under `cinny/element-call/`), run
+> `gh issue list -R coffeegrind123/prinny -l element-call-upgrade`.
+> If one is open, do that upgrade first: the queue no longer applies to the
+> latest Element Call, and call work on top of a stale widget is wasted.
+
+The call widget is **not** the `@element-hq/element-call-embedded` npm package.
+It is element-hq/element-call built from source with our patches:
+
+| Path (in `cinny/`) | What |
+|---|---|
+| `element-call/UPSTREAM` | The upstream tag, one line (`v0.24.0`) |
+| `element-call/patches/NNNN-*.patch` | `git format-patch` files, applied in order with `git am`. Author is the original author (blong for the meow ports); the commit adding them carries `Co-authored-by` |
+| `element-call/build.sh` | CI-only: `git am` → `pnpm install` → `tsc` → the patches' unit tests → `build:embedded:production` → CSP hash check. Logs per stage |
+| `scripts/element-call.mjs` | `tag` (release tag of this queue), `fetch` (download + sha256-check into `element-call/dist`) |
+| `.github/workflows/element-call.yml` | Builds a queue once and publishes it as a prerelease `element-call-<UPSTREAM>-<hash>` of coffeegrind123/prinny. `publish-webapp.yml` calls it first on every push |
+| `.github/workflows/element-call-upgrade.yml` | Weekly (Mon 04:23 UTC) + dispatch with `dry_run`/`version` inputs |
+
+How it fits together: the hash covers `UPSTREAM` and every patch byte, so any
+change names a new release. `npm start` / `npm run build` run
+`node scripts/element-call.mjs fetch` first, and `vite.config.js` **refuses to
+build** if `element-call/dist` does not hold exactly this queue — there is no
+silent fallback to the npm package. `PRINNY_ELEMENT_CALL=npm` is the explicit
+opt-out for offline local work only; never set it in CI. In CI the fetch waits
+up to 45 min for a queue that is still being built (a prinny-client push racing
+publish-webapp). The widget URL's `v=` is `0.24.0-prinny.<hash>`.
+
+The weekly job: if the latest stable release is newer than `UPSTREAM`, it
+applies the queue to it and builds. Clean → publishes the build, commits the
+`UPSTREAM` bump plus a CHANGELOG commit citing it, pushes, and starts
+publish-webapp. Failure → creates or updates the one open `element-call-upgrade`
+issue (stage, failing patch, log tail; `[security]` in the title if the skipped
+release notes mention security). **Issues are disabled on coffeegrind123/prinny
+as of 31.10.2026** — until they are enabled (`gh api -X PATCH
+repos/coffeegrind123/prinny -F has_issues=true`), a failure only shows as a red
+run of "Element Call upgrade", so check that workflow too.
+
+### Upgrading by hand (when the weekly job filed an issue)
+
+Never build Element Call locally — `git am` and reading code only; CI builds.
+
+```bash
+cd cinny
+NEW=v0.28.0                                    # the issue's version
+git clone --filter=blob:none https://github.com/element-hq/element-call.git /tmp/ec
+cd /tmp/ec && git checkout -b prinny "$NEW"
+git am --3way ~/prinny-mono/prinny-desktop/cinny/element-call/patches/*.patch
+# On a conflict: fix the files, `git add`, `git am --continue`. If upstream
+# now does what a patch does, `git am --skip` it and say so in the commit.
+# Rebase against the code at $NEW, not the old one: read it, keep each patch's
+# intent, adapt names (0.24 renamed waiting->ringtone, for example).
+rm ~/prinny-mono/prinny-desktop/cinny/element-call/patches/*.patch
+git format-patch --zero-commit --no-signature "$NEW"..HEAD \
+  -o ~/prinny-mono/prinny-desktop/cinny/element-call/patches
+cd ~/prinny-mono/prinny-desktop/cinny
+echo "$NEW" > element-call/UPSTREAM
+```
+
+Then commit (code commit + CHANGELOG commit, as always) and push. CI is the
+build: publish-webapp's `element-call` job builds and publishes the new queue
+before anything else, and if it fails the publish stops there and nothing ships
+— read `gh run view --log-failed` or the run's `element-call-*` artifact (one
+log per stage), fix, push again. To re-check without a new commit:
+`gh workflow run element-call.yml -R coffeegrind123/prinny --ref main -f rebuild=true`.
+If the csp stage fails, the widget's
+inline scripts changed: put the hashes it prints into `script-src` in
+`docker-nginx.conf` and `.github/webapp-release-template/nginx.conf`. The
+issue closes itself on the next weekly run once `UPSTREAM` is current.
+
+Adding a patch: commit it in the `/tmp/ec` branch above, re-export the whole
+series the same way, keep the original author with `--author`, and name the
+source commit in the message.
+
 ## Windows: single instance and the taskbar AppUserModelID
 
 Two Windows behaviours that look like one bug ("I keep ending up with several
