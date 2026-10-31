@@ -152,7 +152,19 @@ class UnifiedPushReceiver : MessagingReceiver() {
     private fun parsePush(raw: String): PushSummary {
         val fallback = PushSummary("Cinny", "New message", null, null, null, null)
         return try {
-            val notification = JSONObject(raw).optJSONObject("notification") ?: return fallback
+            // Sygnal wraps the event in a `notification` object, but some
+            // gateways and distributors send that object JSON-encoded as a
+            // string, and some send it unwrapped. Both of those used to reach
+            // `fallback`, whose missing event id reads as "read elsewhere", so
+            // nothing was posted at all. An invalid string throws and is
+            // caught below.
+            val root = JSONObject(raw)
+            val notification = when (val wrapped = root.opt("notification")) {
+                is JSONObject -> wrapped
+                is String -> JSONObject(wrapped)
+                null -> root
+                else -> return fallback
+            }
             val roomId = notification.optString("room_id", "").ifEmpty { null }
             val eventId = notification.optString("event_id", "").ifEmpty { null }
             val senderId = notification.optString("sender", "").ifEmpty { null }
