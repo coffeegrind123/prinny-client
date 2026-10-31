@@ -339,7 +339,7 @@ It is element-hq/element-call built from source with our patches:
 
 | Path (in `cinny/`) | What |
 |---|---|
-| `element-call/UPSTREAM` | The upstream tag, one line (`v0.24.0`) |
+| `element-call/UPSTREAM` | The upstream tag, one line (e.g. `v0.26.1`) — the file is the source of truth, not this table |
 | `element-call/patches/NNNN-*.patch` | `git format-patch` files, applied in order with `git am`. Author is the original author (blong for the meow ports); the commit adding them carries `Co-authored-by` |
 | `element-call/build.sh` | CI-only: `git am` → `pnpm install` → `tsc` → the patches' unit tests → `build:embedded:production` → CSP hash check. Logs per stage |
 | `scripts/element-call.mjs` | `tag` (release tag of this queue), `fetch` (download + sha256-check into `element-call/dist`) |
@@ -372,7 +372,9 @@ Never build Element Call locally — `git am` and reading code only; CI builds.
 ```bash
 cd cinny
 NEW=v0.28.0                                    # the issue's version
-git clone --filter=blob:none https://github.com/element-hq/element-call.git /tmp/ec
+# A FULL clone: a blobless one makes `git am --3way` fail with "sha1
+# information is lacking" — the 3-way fallback needs the old blobs.
+git clone https://github.com/element-hq/element-call.git /tmp/ec
 cd /tmp/ec && git checkout -b prinny "$NEW"
 git am --3way ~/prinny-mono/prinny-desktop/cinny/element-call/patches/*.patch
 # On a conflict: fix the files, `git add`, `git am --continue`. If upstream
