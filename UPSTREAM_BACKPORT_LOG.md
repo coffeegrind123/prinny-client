@@ -71,9 +71,21 @@ Range: `5c57861..upstream/main` (`d3627de`) — 5 commits. Nothing applicable.
 | 2 | `35c467d` | `[-]` | chore: bump actions/setup-node 6.4.0 → 7.0.0 (#608) | Upstream-only workflows |
 | 3 | `f1711fc` | `[-]` | chore: add a checkbox for contribution policy (#617) | Issue template |
 | 4 | `6849c2c` | `[-]` | chore: bump softprops/action-gh-release 3.0.2 → 3.0.3 (#616) | Upstream-only workflows |
-| 5 | `d3627de` | `[-]` | chore: Release v4.12.7 (#618) | Release stamp — **START HERE next sync** |
+| 5 | `d3627de` | `[-]` | chore: Release v4.12.7 (#618) | Release stamp |
 
 Recorded with `git merge -s ours upstream/main` (see below).
+
+
+## 2026-10-31 sync session
+
+Range: `d3627de..upstream/main` (`5880060`) — 2 commits. Nothing applicable.
+
+| # | SHA | Status | Description | Notes |
+|---|-----|--------|-------------|-------|
+| 1 | `451828d` | `[-]` | chore: add Rust feature to devcontainer configuration | Upstream-only dev tooling — we have no `.devcontainer/`, and builds go through CI |
+| 2 | `5880060` | `[-]` | chore: Release v4.12.8 (#623) | Release stamp — **START HERE next sync** |
+
+Recorded with `git merge -s ours upstream/main`.
 
 ---
 
@@ -144,7 +156,7 @@ free here — syncs are driven by the START HERE marker below and applied with
 git fetch upstream
 
 # 2. Check what's new since the "START HERE" marker above
-git log --oneline d3627de..upstream/main --reverse
+git log --oneline 5880060..upstream/main --reverse
 
 # 3. Triage against the "Why so much is skipped" table — most upstream churn
 #    lands on CI/updater/versioning subsystems we replaced wholesale.
