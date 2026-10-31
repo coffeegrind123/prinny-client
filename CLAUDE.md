@@ -294,6 +294,38 @@ mkdir -p cinny/dist && echo '<!doctype html>' > cinny/dist/index.html
 reports *tail's* status, so a failed build reads as a pass. Redirect to a file,
 or use `${PIPESTATUS[0]}`.
 
+## Secondary sources (other cinny forks)
+
+Besides upstream, we periodically port from other cinny descendants. Unlike the upstream
+syncs these are **triage-then-port rounds**, not cherry-pick syncs: the forks are structured
+differently, so every item is re-derived against our code. Done twice so far (14.08 and
+31.10.2026). The ledgers live outside the repo in `~/prinny-mono/handoff/`.
+
+| Source | Remote / repo | Ledgers | START HERE |
+|---|---|---|---|
+| largelanguagemeowing/cinny | remote `meow` in `cinny/`, branch `fork/dev` | `port-decisions.md` (round 1), `meow-triage-2026-10-31.md` (round 2) | `45fa6bb0` (30.10.2026) |
+| SableClient/Sable-Legacy | `gh … --repo SableClient/Sable-Legacy` | `HANDOFF-gallery-and-sable-ports-2026-08-23.md` §3, `sable-triage-2026-10-31.md` | **finished** — frozen at 1.22.11; successor is a Rust/Svelte rewrite, not portable |
+
+Status of the round-2 implementation: `handoff/PORT-PLAN-2026-10-31.md`.
+
+### How a round runs
+
+1. `cd cinny && git fetch meow fork/dev`, then list what's new since the START HERE marker:
+   `git log --no-merges --reverse <marker>..meow/fork/dev --not upstream/dev`.
+2. **The meow fork rewrites its history.** Between rounds 1 and 2 every old SHA vanished and
+   ~132 already-ported commits came back under new SHAs. If the marker no longer resolves, use
+   `--since=<date of the last round>` and match by content (`git range-diff`, `git cherry`,
+   `git log -S'<identifier>'` on our `main`), never by commit title.
+3. Triage before porting. For each group of commits: what the diff does (titles mislead), whether
+   we already have it (grep our code — ours is often re-derived and looks different), and a
+   verdict: PORT (R = replace our behaviour / T = settings toggle, default off), MAYBE (with the
+   question that decides it), SKIP (one-line reason). Write it to `handoff/<source>-triage-<date>.md`
+   and get the user's go-ahead on the list.
+4. Port in groups by area, one commit per item, our usual changelog pairing, one push per group.
+   Wire keys we invent use `app.prinny.*` (decided in round 1 — `port-decisions.md`).
+5. Close the round: append a "Round N" section to the source's ledger with the fork tip SHA and
+   date, and move the START HERE marker in the table above.
+
 ## Windows: single instance and the taskbar AppUserModelID
 
 Two Windows behaviours that look like one bug ("I keep ending up with several
