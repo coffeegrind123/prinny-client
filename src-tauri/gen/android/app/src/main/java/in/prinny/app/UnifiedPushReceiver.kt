@@ -34,6 +34,11 @@ class UnifiedPushReceiver : MessagingReceiver() {
          */
         const val CHANNEL_ID = MessageNotificationPlugin.CHANNEL_ID
         const val NOTIFICATION_ID = 100
+
+        private const val SPOILER_PLACEHOLDER = "[spoiler]"
+        private val HTML_TAG = Regex("<(/?)([a-zA-Z0-9-]+)([^>]*)>")
+        private val MARKDOWN_SPOILER = Regex("\\|\\|[\\s\\S]+?\\|\\|")
+        private val BLOCK_TAGS = setOf("p", "div", "li", "blockquote")
     }
 
     private fun createNotificationChannel(context: Context) {
@@ -78,6 +83,72 @@ class UnifiedPushReceiver : MessagingReceiver() {
         val unreadCount: Int?,
     )
 
+    /**
+     * The message body with spoilered text replaced by `[spoiler]`, the same
+     * rule the in-app path applies (`redactSpoilers` in utils/room.ts). The
+     * notification shade shows plain text and keeps it, so a spoiler would
+     * otherwise be revealed there.
+     *
+     * The formatted body's spoiler elements are authoritative when present.
+     * There is no DOM here, so the tags are walked by hand, counting nested
+     * elements of the spoiler's own name so a pill or colour span inside it
+     * does not end it early. An unclosed spoiler hides everything after it,
+     * which is the safe way to be wrong. Without a formatted spoiler, the
+     * markdown `||x||` syntax is the only signal.
+     */
+    private fun redactSpoilers(content: JSONObject?, body: String): String {
+        val formatted = content?.optString("formatted_body", "") ?: ""
+        if (!formatted.contains("data-mx-spoiler")) {
+            return body.replace(MARKDOWN_SPOILER, SPOILER_PLACEHOLDER)
+        }
+
+        val out = StringBuilder()
+        var hiddenTag: String? = null
+        var hiddenDepth = 0
+        var pos = 0
+        for (match in HTML_TAG.findAll(formatted)) {
+            if (hiddenTag == null) out.append(formatted, pos, match.range.first)
+            pos = match.range.last + 1
+            val closing = match.groupValues[1] == "/"
+            val name = match.groupValues[2].lowercase()
+            val attrs = match.groupValues[3]
+
+            if (hiddenTag != null) {
+                if (name == hiddenTag) {
+                    if (closing) hiddenDepth-- else if (!attrs.endsWith("/")) hiddenDepth++
+                    if (hiddenDepth == 0) hiddenTag = null
+                }
+                continue
+            }
+
+            when {
+                // The reply fallback quotes the parent message, which is not
+                // what this notification is about.
+                !closing && name == "mx-reply" -> {
+                    hiddenTag = name
+                    hiddenDepth = 1
+                }
+                !closing && attrs.contains("data-mx-spoiler") -> {
+                    out.append(SPOILER_PLACEHOLDER)
+                    hiddenTag = name
+                    hiddenDepth = 1
+                }
+                name == "br" -> out.append('\n')
+                closing && name in BLOCK_TAGS -> out.append('\n')
+            }
+        }
+        if (hiddenTag == null) out.append(formatted, pos, formatted.length)
+
+        return out.toString()
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .trim()
+    }
+
     private fun parsePush(raw: String): PushSummary {
         val fallback = PushSummary("Cinny", "New message", null, null, null, null)
         return try {
@@ -99,7 +170,7 @@ class UnifiedPushReceiver : MessagingReceiver() {
             }
 
             val content = notification.optJSONObject("content")
-            val msgBody = content?.optString("body", "") ?: ""
+            val msgBody = redactSpoilers(content, content?.optString("body", "") ?: "")
             val text = when {
                 msgBody.isNotEmpty() -> msgBody
                 // No content: either an encrypted room, or an event type that
