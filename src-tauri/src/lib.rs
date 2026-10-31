@@ -19,6 +19,7 @@ mod taskbar;
 mod rich_presence;
 mod custom_css;
 mod reddit;
+mod toggle_shortcut;
 
 // Paths the user actually dropped onto the window via the OS native drag-drop
 // path. `read_dropped_file` only reads paths that appear here, so a malicious
@@ -1561,6 +1562,7 @@ pub fn run() {
             rich_presence::stop_rich_presence_bridge,
             custom_css::custom_css_edit,
             custom_css::custom_css_stop,
+            toggle_shortcut::set_toggle_window_shortcut,
         ])
         // Registered AFTER single-instance and BEFORE localhost on purpose.
         // Plugin setups run in registration order, so by the time this probes
@@ -1608,6 +1610,10 @@ pub fn run() {
                     .build(),
             )
             .plugin(tauri_plugin_updater::Builder::new().build())
+            // No shortcuts at startup: the frontend registers the user's
+            // show/hide shortcut through set_toggle_window_shortcut.
+            .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            .manage(toggle_shortcut::ToggleShortcut::default())
             // Start at login, off unless the user turns it on in settings.
             // `--minimized` is passed so an app that launches itself at boot
             // does so into the tray rather than stealing the screen from

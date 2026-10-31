@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-toggle-window-shortcut"
+description = "Enables the set_toggle_window_shortcut command without any pre-configured scope."
+commands.allow = ["set_toggle_window_shortcut"]
+
+[[permission]]
+identifier = "deny-set-toggle-window-shortcut"
+description = "Denies the set_toggle_window_shortcut command without any pre-configured scope."
+commands.deny = ["set_toggle_window_shortcut"]

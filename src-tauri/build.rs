@@ -38,6 +38,7 @@ const APP_COMMANDS: &[&str] = &[
     "stop_rich_presence_bridge",
     "custom_css_edit",
     "custom_css_stop",
+    "set_toggle_window_shortcut",
 ];
 
 /// The Android plugins declared inline in `lib.rs` with

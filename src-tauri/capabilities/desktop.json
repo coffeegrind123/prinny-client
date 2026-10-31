@@ -39,6 +39,7 @@
     "allow-start-rich-presence-bridge",
     "allow-stop-rich-presence-bridge",
     "allow-custom-css-edit",
-    "allow-custom-css-stop"
+    "allow-custom-css-stop",
+    "allow-set-toggle-window-shortcut"
   ]
 }
