@@ -360,10 +360,9 @@ applies the queue to it and builds. Clean → publishes the build, commits the
 `UPSTREAM` bump plus a CHANGELOG commit citing it, pushes, and starts
 publish-webapp. Failure → creates or updates the one open `element-call-upgrade`
 issue (stage, failing patch, log tail; `[security]` in the title if the skipped
-release notes mention security). **Issues are disabled on coffeegrind123/prinny
-as of 31.10.2026** — until they are enabled (`gh api -X PATCH
-repos/coffeegrind123/prinny -F has_issues=true`), a failure only shows as a red
-run of "Element Call upgrade", so check that workflow too.
+release notes mention security). Issues were enabled on coffeegrind123/prinny on
+01.11.2026 for this; the workflow skips filing (and only fails red) if they are
+ever turned off again.
 
 ### Upgrading by hand (when the weekly job filed an issue)
 
