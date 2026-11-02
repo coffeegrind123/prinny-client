@@ -147,6 +147,41 @@ $C composer                        # was: domCaret "hi "@0 — caret at the star
 $C type abcdef; $C composer        # was: "abcdefhi 😄"
 ```
 
+**Emoji picked from the `:` autocomplete after arrowing types backwards**
+(fixed in `7e6e048`, `focusEditorDOM` / `safeFocusEditor` in
+`cinny/src/app/components/editor/utils.ts`):
+
+```bash
+C="node scripts/live-test/cdp.mjs"
+$C click '[data-slate-editor]'
+$C type ':cry'; sleep 0.6           # list: cry, crystal_ball, crying_cat_face, sob
+$C key ArrowDown                    # one is enough; focus moves into the menu
+$C key Enter; sleep 0.5             # Tab picks the same way
+$C composer                         # was: model [0,2]@1, domCaret "SPAN@0"
+$C type xyz; $C composer            # was: "zyx😢 "
+```
+
+Enter *without* arrowing was fine, because the composer never lost focus.
+Sending is not needed: the caret is wrong from the moment of the pick. The
+cause was slate's private `IS_FOCUSED` flag staying unset while the composer
+held DOM focus. The menu's FocusTrap refocuses the composer from
+`onPostDeactivate`, which runs inside React's commit, and React drops every
+event during a commit, so `Editable`'s `onFocus` never ran. slate-react
+writes its selection to the DOM only while `IS_FOCUSED` is set. Two probes
+told this apart from a selection bug:
+
+- **Is slate's view of focus wrong?** In the broken state, change the
+  selection through the model (`editor.select(...)` on the fiber's `editor`
+  prop, as `composer` finds it). The DOM caret did not follow. After
+  `el.blur(); el.focus()` it did.
+- **Did React see the focus?** Wrap the editable's `__reactProps$….onFocus`
+  to log, then repeat the pick. It logged on a plain blur/focus (the control)
+  but not on the pick.
+
+Clean up between runs. A broken run leaves reversed text in the composer, and
+the next `:cry` is typed in reversed (`yrc:`), so the menu never opens. Send
+it, or `blur()`/`focus()` and send, before repeating.
+
 **First letter swallowed by a bare-letter shortcut** (fixed in
 `MessageKeybinds.tsx`). Click a room in the sidebar so the pointer is off the
 timeline and focus is outside the composer. Then `type foobar`: before the fix
@@ -174,6 +209,9 @@ trusting what's on screen.
 | homeserver unreachable from the page | inside the dev container, `localhost:8228` is the container itself | `homeserver.sh` uses `host.docker.internal` when `/.dockerenv` exists; override with `PRINNY_HS_URL` |
 | test build ends up in the desktop app | building into `cinny/dist` | `serve.sh` builds into `$PRINNY_LIVE_DIR/dist` on purpose |
 | `pkill -f "vite preview"` kills your own shell | the pattern matches the shell's own command line | `serve.sh stop`, which kills the server's own process group |
+| `serve.sh start`: "element-call/dist does not hold element-call-…" | `vite preview` loads `vite.config.js`, which checks the Element Call queue | `PRINNY_ELEMENT_CALL=npm scripts/live-test/serve.sh start`; preview only serves files |
+| serving the CI build (`webapp-release`) shows "Failed to load client configuration file" | that branch ships `config.sample.json` only | copy its `dist/` into `$PRINNY_LIVE_DIR/dist`, then `cp config.sample.json config.json` there |
+| `cdp.mjs`: "no tab whose URL contains :5199" | another session's Chrome answered first | find yours: `curl -s 127.0.0.1:<port>/json \| grep -c 5199` for each `--remote-debugging-port`, then `CDP_PORT=<port>` |
 | `emoji` / other toolbar buttons have no stable selector | icon-only buttons with no label | tag them first with `eval`, e.g. walk up from `[data-slate-editor]` to the container holding the `button[aria-pressed]`s and set `data-t` on the one you want |
 
 ## What this setup cannot do
