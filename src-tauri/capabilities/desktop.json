@@ -38,6 +38,8 @@
     "allow-send-windows-message-toast",
     "allow-start-rich-presence-bridge",
     "allow-stop-rich-presence-bridge",
+    "allow-start-app-presence-server",
+    "allow-stop-app-presence-server",
     "allow-custom-css-edit",
     "allow-custom-css-stop",
     "allow-set-toggle-window-shortcut"

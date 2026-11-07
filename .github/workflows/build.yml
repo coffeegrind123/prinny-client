@@ -135,6 +135,15 @@ jobs:
         working-directory: src-tauri
         run: cargo check --target x86_64-apple-darwin
 
+      # The unit tests of the hand-written protocol code: the MSC4544 app
+      # presence WebSocket (RFC 6455 vectors, origin refusal, framing). Nothing
+      # else ran `cargo test` in CI, and it is never run locally, so without
+      # this they would never run at all. Native target, reusing the check's
+      # build cache; it gates the release like the checks above.
+      - name: cargo test (app_presence)
+        working-directory: src-tauri
+        run: cargo test --lib app_presence
+
   # ── Auto-create release (main push auto-versions, tag push uses tag) ──
   create-release:
     needs: [typecheck, macos-check]

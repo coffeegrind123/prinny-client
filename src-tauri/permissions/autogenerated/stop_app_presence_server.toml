@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stop-app-presence-server"
+description = "Enables the stop_app_presence_server command without any pre-configured scope."
+commands.allow = ["stop_app_presence_server"]
+
+[[permission]]
+identifier = "deny-stop-app-presence-server"
+description = "Denies the stop_app_presence_server command without any pre-configured scope."
+commands.deny = ["stop_app_presence_server"]

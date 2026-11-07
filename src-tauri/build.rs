@@ -36,6 +36,8 @@ const APP_COMMANDS: &[&str] = &[
     "set_content_protection",
     "start_rich_presence_bridge",
     "stop_rich_presence_bridge",
+    "start_app_presence_server",
+    "stop_app_presence_server",
     "custom_css_edit",
     "custom_css_stop",
     "set_toggle_window_shortcut",

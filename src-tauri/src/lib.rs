@@ -16,6 +16,7 @@ use tauri::TitleBarStyle;
 use tauri_plugin_opener::OpenerExt;
 
 mod taskbar;
+mod app_presence;
 mod rich_presence;
 mod custom_css;
 mod reddit;
@@ -1520,6 +1521,7 @@ pub fn run() {
 
     builder = builder
         .manage(rich_presence::RichPresenceBridge::default())
+        .manage(app_presence::AppPresenceServer::default())
         .manage(custom_css::CustomCssWatch::default())
         .manage(DroppedPaths::default())
         .manage(HomeserverOrigin::default())
@@ -1560,6 +1562,8 @@ pub fn run() {
             set_content_protection,
             rich_presence::start_rich_presence_bridge,
             rich_presence::stop_rich_presence_bridge,
+            app_presence::start_app_presence_server,
+            app_presence::stop_app_presence_server,
             custom_css::custom_css_edit,
             custom_css::custom_css_stop,
             toggle_shortcut::set_toggle_window_shortcut,
