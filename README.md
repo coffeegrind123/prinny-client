@@ -13,6 +13,7 @@ Everything is on [GitHub Releases](https://github.com/coffeegrind123/prinny-clie
 | Platform | Download |
 |----------|----------|
 | Windows | [Setup](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64-setup.exe) |
+| Windows ARM64 | [Setup](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-aarch64-setup.exe) |
 | macOS | [DMG](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-universal.dmg) |
 | Linux | [AppImage](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.AppImage) · [deb](https://github.com/coffeegrind123/prinny-client/releases/latest/download/Prinny_desktop-x86_64.deb) |
 | Android | [APK](https://github.com/coffeegrind123/prinny-client/releases/latest/download/prinny-android-universal.apk) (sideload) |

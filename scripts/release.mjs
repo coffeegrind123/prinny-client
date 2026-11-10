@@ -1,5 +1,10 @@
 import { getOctokit, context } from "@actions/github";
 
+const WINDOWS_X86_64_ARCHIVE = /x86_64-setup\.nsis\.zip$/;
+const WINDOWS_X86_64_SIG = /x86_64-setup\.nsis\.zip\.sig$/;
+const WINDOWS_AARCH64_ARCHIVE = /aarch64-setup\.nsis\.zip$/;
+const WINDOWS_AARCH64_SIG = /aarch64-setup\.nsis\.zip\.sig$/;
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // A just-uploaded release asset is not immediately servable. GitHub's asset CDN
@@ -69,11 +74,17 @@ async function createTauriRelease() {
   const latestRelease = await repos.getReleaseByTag({ ...repoMetaData, tag: latestTag.name });
   const latestAssets = latestRelease.data.assets;
 
-  // Signed updater artifacts: Windows (.nsis.zip), Linux (.AppImage.tar.gz),
-  // macOS universal (.app.tar.gz). darwin-x86_64 and darwin-aarch64 share
+  // Signed updater artifacts: Windows x86_64 and aarch64 (.nsis.zip), Linux
+  // (.AppImage.tar.gz), macOS universal (.app.tar.gz).
+  //
+  // The two Windows archives are told apart by the architecture in the name
+  // build.yml gives them (Prinny_desktop-<arch>-setup.nsis.zip). A bare
+  // /\.nsis\.zip$/ would match both, and whichever asset resolved last would
+  // become the x86_64 entry: x64 machines offered an ARM installer. darwin-x86_64 and darwin-aarch64 share
   // the same universal artifact. Android uses its own native UpdateChecker
   // (DownloadManager + APK install prompt) with a sha256 instead of minisign.
   const windowsX86_64 = {};
+  const windowsAarch64 = {};
   const linuxX86_64 = {};
   const darwinUniversal = {};
   const android = {};
@@ -81,11 +92,18 @@ async function createTauriRelease() {
   const promises = latestAssets.map(async (asset) => {
     const { name, browser_download_url } = asset;
 
-    if (/\.nsis\.zip$/.test(name)) {
+    if (WINDOWS_X86_64_ARCHIVE.test(name)) {
       windowsX86_64.url = browser_download_url;
     }
-    if (/\.nsis\.zip\.sig$/.test(name)) {
+    if (WINDOWS_X86_64_SIG.test(name)) {
       windowsX86_64.signature = await getAssetSign(browser_download_url);
+    }
+
+    if (WINDOWS_AARCH64_ARCHIVE.test(name)) {
+      windowsAarch64.url = browser_download_url;
+    }
+    if (WINDOWS_AARCH64_SIG.test(name)) {
+      windowsAarch64.signature = await getAssetSign(browser_download_url);
     }
 
     if (/\.AppImage\.tar\.gz$/.test(name)) {
@@ -163,7 +181,8 @@ async function createTauriRelease() {
     }
     console.log(`No signed ${key} updater artifact (TAURI_SIGNING_PRIVATE_KEY not set, or build failed?)`);
   };
-  emit('windows-x86_64', windowsX86_64, /\.nsis\.zip\.sig$/);
+  emit('windows-x86_64', windowsX86_64, WINDOWS_X86_64_SIG);
+  emit('windows-aarch64', windowsAarch64, WINDOWS_AARCH64_SIG);
   emit('linux-x86_64', linuxX86_64, /\.AppImage\.tar\.gz\.sig$/);
   emit('darwin-x86_64', darwinUniversal, /\.app\.tar\.gz\.sig$/);
   emit('darwin-aarch64', darwinUniversal, /\.app\.tar\.gz\.sig$/);
