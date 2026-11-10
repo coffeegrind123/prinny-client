@@ -76,6 +76,20 @@ Range: `5c57861..upstream/main` (`d3627de`) — 5 commits. Nothing applicable.
 Recorded with `git merge -s ours upstream/main` (see below).
 
 
+## 2026-11-10 sync session
+
+Range: `5880060..upstream/main` (`d4f78de`) — 5 commits.
+
+| # | SHA | Status | Description | Notes |
+|---|-----|--------|-------------|-------|
+| 1 | `055d561` | `[-]` | chore: bump actions/setup-node from 7.0.0 to 7.1.0 (#622) | CI dep — upstream's `tauri*.yml`, which we do not have |
+| 2 | `f07b917` | `[-]` | chore: bump actions/upload-artifact from 7.0.1 to 7.0.2 (#621) | CI dep |
+| 3 | `4f2944a` | `[~]` | feat: Add Windows arm64 build support (#615) | Our `5261509`: a `windows-aarch64` job in our `build.yml` (not upstream's `tauri*.yml`/`test.yml`), arch-specific asset matching in `release.mjs`, NSIS priming shared via `.github/actions/prime-nsis`, README row. Not taken: the no-updater build and the scoop change, which we do not ship |
+| 4 | `c9ba7f3` | `[-]` | chore: bump actions/setup-node from 7.0.0 to 7.1.0 (#625) | CI dep |
+| 5 | `d4f78de` | `[-]` | chore: bump softprops/action-gh-release from 3.0.2 to 3.0.3 (#624) | CI dep — **START HERE next sync** |
+
+Recorded with `git merge -s ours upstream/main`.
+
 ## 2026-10-31 sync session
 
 Range: `d3627de..upstream/main` (`5880060`) — 2 commits. Nothing applicable.
@@ -83,7 +97,7 @@ Range: `d3627de..upstream/main` (`5880060`) — 2 commits. Nothing applicable.
 | # | SHA | Status | Description | Notes |
 |---|-----|--------|-------------|-------|
 | 1 | `451828d` | `[-]` | chore: add Rust feature to devcontainer configuration | Upstream-only dev tooling — we have no `.devcontainer/`, and builds go through CI |
-| 2 | `5880060` | `[-]` | chore: Release v4.12.8 (#623) | Release stamp — **START HERE next sync** |
+| 2 | `5880060` | `[-]` | chore: Release v4.12.8 (#623) | Release stamp |
 
 Recorded with `git merge -s ours upstream/main`.
 
