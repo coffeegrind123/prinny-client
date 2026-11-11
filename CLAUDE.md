@@ -298,12 +298,12 @@ or use `${PIPESTATUS[0]}`.
 
 Besides upstream, we periodically port from other cinny descendants. Unlike the upstream
 syncs these are **triage-then-port rounds**, not cherry-pick syncs: the forks are structured
-differently, so every item is re-derived against our code. Done twice so far (14.08 and
-31.10.2026). The ledgers live outside the repo in `~/prinny-mono/handoff/`.
+differently, so every item is re-derived against our code. Done three times so far (14.08,
+31.10 and 10.11.2026). The ledgers live outside the repo in `~/prinny-mono/handoff/`.
 
 | Source | Remote / repo | Ledgers | START HERE |
 |---|---|---|---|
-| largelanguagemeowing/cinny | remote `meow` in `cinny/`, branch `fork/dev` | `port-decisions.md` (round 1), `meow-triage-2026-10-31.md` (round 2) | `45fa6bb0` (30.10.2026) |
+| largelanguagemeowing/cinny | remote `meow` in `cinny/`, branch `fork/dev` | `port-decisions.md` (round 1), `meow-triage-2026-10-31.md` (round 2), `meow-triage-2026-11-10.md` (round 3) | `bdea206c` (10.11.2026) |
 | SableClient/Sable-Legacy | `gh … --repo SableClient/Sable-Legacy` | `HANDOFF-gallery-and-sable-ports-2026-08-23.md` §3, `sable-triage-2026-10-31.md` | **finished** — frozen at 1.22.11; successor is a Rust/Svelte rewrite, not portable |
 
 Status of the round-2 implementation: `handoff/PORT-PLAN-2026-10-31.md`.
