@@ -85,6 +85,7 @@ jobs:
           git commit -m "Auto-bump cinny submodule to $NEW_SHORT [skip ci]"
           git push origin main
           echo "bumped=true" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # The bump commit carries [skip ci] on purpose — a webapp change should
       # not fire every workflow in this repo on push — but that left nothing to
@@ -100,8 +101,68 @@ jobs:
       # is allowed to raise (the other being repository_dispatch), so this needs
       # no PAT; the recursion guard that blocks token-raised `push` events does
       # not apply to it.
+      #
+      # `--ref main` is resolved by GitHub when the dispatch arrives, and right
+      # after a push it can still resolve to the previous commit. On 2026-11-11
+      # the bump to 5ab1b004 was pushed at 22:15:37 and the build dispatched at
+      # 22:15:40 ran on the old d0283d3, rebuilding the commit whose Windows and
+      # macOS builds had already failed. So: wait until the API serves main at
+      # (or past) the commit just pushed, dispatch, then check that the build
+      # it started really contains that commit, and fail loudly if not.
       - name: Release the desktop client for the new pointer
         if: steps.bump.outputs.bumped == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run build.yml --repo "${{ github.repository }}" --ref main
+          REPO: ${{ github.repository }}
+          PUSHED: ${{ steps.bump.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$PUSHED" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::pushed commit is not a 40-hex SHA: '$PUSHED'"
+            exit 1
+          fi
+
+          # identical: main is the pushed commit; ahead: something landed on top,
+          # which still contains it. Anything else means main does not have it yet.
+          contains_pushed() {
+            local status
+            status=$(gh api "repos/$REPO/compare/$PUSHED...$1" --jq .status 2>/dev/null) || return 1
+            [ "$status" = identical ] || [ "$status" = ahead ]
+          }
+
+          WAIT_SECONDS=300
+          POLL_SECONDS=5
+          deadline=$(( $(date +%s) + WAIT_SECONDS ))
+          until contains_pushed main; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::main still does not contain $PUSHED after ${WAIT_SECONDS}s; not dispatching a build of the old commit"
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
+          echo "main contains $PUSHED"
+
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run build.yml --repo "$REPO" --ref main
+
+          deadline=$(( $(date +%s) + 120 ))
+          while :; do
+            run=$(gh run list --repo "$REPO" --workflow build.yml --event workflow_dispatch -L 5 \
+              --json databaseId,headSha,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$since\")][0] // empty | \"\\(.databaseId) \\(.headSha)\"")
+            if [ -n "$run" ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::dispatched build.yml but no run appeared within 120s"
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
+          read -r run_id run_sha <<< "$run"
+          if ! contains_pushed "$run_sha"; then
+            echo "::error::build run $run_id is on $run_sha, which does not contain $PUSHED; re-run build.yml by hand"
+            exit 1
+          fi
+          echo "build run $run_id is on $run_sha, which contains $PUSHED"
