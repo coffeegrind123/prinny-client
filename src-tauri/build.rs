@@ -29,6 +29,7 @@ const APP_COMMANDS: &[&str] = &[
     "fetch_remote_bytes",
     "fetch_og_preview",
     "fetch_reddit_post",
+    "fetch_vx_tweet",
     "probe_push_gateway",
     "send_windows_message_toast",
     "arm_capture_intent",

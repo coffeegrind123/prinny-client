@@ -20,6 +20,7 @@ mod app_presence;
 mod rich_presence;
 mod custom_css;
 mod reddit;
+mod vxtwitter;
 mod toggle_shortcut;
 
 // Paths the user actually dropped onto the window via the OS native drag-drop
@@ -1571,6 +1572,7 @@ pub fn run() {
             fetch_remote_bytes,
             fetch_og_preview,
             reddit::fetch_reddit_post,
+            vxtwitter::fetch_vx_tweet,
             probe_push_gateway,
             send_windows_message_toast,
             arm_capture_intent,

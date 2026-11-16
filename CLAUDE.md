@@ -1175,7 +1175,18 @@ After this, dropped files arrive as a normal `DragEvent` with a populated `dataT
 Working approach:
 
 1. Detect Twitter/X URL in `getTwitterId` (`UrlPreviewCard.tsx`)
-2. Client-side `fetch('https://api.vxtwitter.com/.../status/{id}')` (CORS-friendly)
+2. `fetchVxTweet` in `utils/socialEmbed.ts`. **The page cannot read
+   api.vxtwitter.com any more**: since ~11.2026 Cloudflare answers every
+   browser User-Agent with a JS challenge (403 "Just a moment..."), including
+   the app's own WebView, while a non-browser UA gets the JSON (measured
+   16.11.2026 across curl and Python, so it is the UA, not the TLS stack). So
+   the shell asks it through the Rust `fetch_vx_tweet` command
+   (`src-tauri/src/vxtwitter.rs`, fixed host, digits-only id), and the web build
+   and any shell failure use `api.fxtwitter.com` (CORS JSON), converted to the
+   vx shape by `utils/fxtwitter.ts` so the card and gallery read one shape.
+   Before this, every failed tweet also fell through to the `fetch_og_preview`
+   fallback on x.com, whose `<meta charSet="utf-8"/>` sent the old meta parser
+   into an infinite loop, one pinned core per tweet.
 3. Fetch the media itself with the referrer stripped and hand the element a
    blob — `useResolvedMediaSrc` in `GifMedia.tsx`. Inside the Tauri shell that
    is the Rust `fetch_remote_bytes` proxy; on the web (and as the shell's

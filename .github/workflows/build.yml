@@ -144,11 +144,12 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib app_presence
 
-      # The link-preview fallback's HTML meta parser. It once looped forever on
-      # any self-closing `<meta … />`, pinning a core per previewed link.
-      - name: cargo test (og_preview)
+      # The link-preview fallback's HTML meta parser (it once looped forever on
+      # any self-closing `<meta … />`, pinning a core per previewed link) and
+      # the vxtwitter command's tweet-id validation.
+      - name: cargo test (og_preview, vxtwitter)
         working-directory: src-tauri
-        run: cargo test --lib og_preview
+        run: cargo test --lib -- og_preview vxtwitter
 
   # ── Auto-create release (main push auto-versions, tag push uses tag) ──
   create-release:

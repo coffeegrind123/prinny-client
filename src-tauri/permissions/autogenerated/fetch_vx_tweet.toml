@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-vx-tweet"
+description = "Enables the fetch_vx_tweet command without any pre-configured scope."
+commands.allow = ["fetch_vx_tweet"]
+
+[[permission]]
+identifier = "deny-fetch-vx-tweet"
+description = "Denies the fetch_vx_tweet command without any pre-configured scope."
+commands.deny = ["fetch_vx_tweet"]
