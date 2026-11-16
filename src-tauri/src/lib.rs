@@ -901,6 +901,15 @@ fn parse_tag_attrs(tag: &str) -> std::collections::HashMap<String, String> {
         if i >= n {
             break;
         }
+        // A `/` between attributes is the self-closing marker (`<meta … />`,
+        // `<meta charSet="utf-8"/>`). Nothing below consumes it, so without
+        // this skip the loop spun on it forever and pinned a core per page.
+        // Every pass must advance `i`: this skip, a name of at least one
+        // character, or the `=` the value branch consumes.
+        if chars[i] == '/' {
+            i += 1;
+            continue;
+        }
         let start = i;
         while i < n && chars[i] != '=' && !chars[i].is_whitespace() && chars[i] != '/' {
             i += 1;
@@ -927,8 +936,10 @@ fn parse_tag_attrs(tag: &str) -> std::collections::HashMap<String, String> {
                     i += 1;
                 }
             } else {
+                // Unquoted values end at whitespace only. A `/` is part of the
+                // value (HTML spec), so `content=https://…` keeps its URL.
                 let vstart = i;
-                while i < n && !chars[i].is_whitespace() && chars[i] != '/' {
+                while i < n && !chars[i].is_whitespace() {
                     i += 1;
                 }
                 value = chars[vstart..i].iter().collect();
@@ -1097,8 +1108,13 @@ async fn fetch_og_preview(url: String) -> Result<serde_json::Value, String> {
                 break;
             }
         }
-        let html = String::from_utf8_lossy(&buf);
-        let map = extract_og(&html);
+        // Off the async worker pool: parsing up to OG_PREVIEW_MAX_BYTES is CPU
+        // work, and a page that is slow to parse would otherwise hold a tokio
+        // worker that every other command shares.
+        let html = String::from_utf8_lossy(&buf).into_owned();
+        let map = tauri::async_runtime::spawn_blocking(move || extract_og(&html))
+            .await
+            .map_err(|e| format!("parse: {e}"))?;
         if map.is_empty() {
             return Err("no preview metadata found".to_string());
         }
