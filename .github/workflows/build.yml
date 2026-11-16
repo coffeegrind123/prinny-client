@@ -144,6 +144,12 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib app_presence
 
+      # The link-preview fallback's HTML meta parser. It once looped forever on
+      # any self-closing `<meta … />`, pinning a core per previewed link.
+      - name: cargo test (og_preview)
+        working-directory: src-tauri
+        run: cargo test --lib og_preview
+
   # ── Auto-create release (main push auto-versions, tag push uses tag) ──
   create-release:
     needs: [typecheck, macos-check]

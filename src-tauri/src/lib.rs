@@ -1827,3 +1827,83 @@ pub fn run() {
         .run(context)
         .expect("error while building tauri application");
 }
+
+#[cfg(test)]
+mod og_preview_tests {
+    use super::{extract_og, parse_tag_attrs};
+    use std::collections::HashMap;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    // A parser that loops forever would hang `cargo test` until the CI job's
+    // timeout, so each call runs on its own thread against a deadline. A
+    // stuck thread is leaked; the test process exits with the failure.
+    const DEADLINE: Duration = Duration::from_secs(5);
+
+    fn attrs(tag: &str) -> HashMap<String, String> {
+        let tag = tag.to_owned();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(parse_tag_attrs(&tag));
+        });
+        rx.recv_timeout(DEADLINE)
+            .unwrap_or_else(|_| panic!("parse_tag_attrs did not terminate"))
+    }
+
+    fn og(html: &str) -> serde_json::Map<String, serde_json::Value> {
+        let html = html.to_owned();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(extract_og(&html));
+        });
+        rx.recv_timeout(DEADLINE)
+            .unwrap_or_else(|_| panic!("extract_og did not terminate"))
+    }
+
+    #[test]
+    fn self_closing_without_space() {
+        let a = attrs(r#"meta charSet="utf-8"/"#);
+        assert_eq!(a.get("charset").map(String::as_str), Some("utf-8"));
+    }
+
+    #[test]
+    fn self_closing_with_space() {
+        let a = attrs(r#"meta property="og:title" content="Hello" /"#);
+        assert_eq!(a.get("property").map(String::as_str), Some("og:title"));
+        assert_eq!(a.get("content").map(String::as_str), Some("Hello"));
+    }
+
+    #[test]
+    fn unquoted_value_with_slashes() {
+        let a = attrs("meta property=og:image content=https://example.com/a/b.png");
+        assert_eq!(a.get("property").map(String::as_str), Some("og:image"));
+        assert_eq!(
+            a.get("content").map(String::as_str),
+            Some("https://example.com/a/b.png")
+        );
+    }
+
+    #[test]
+    fn stray_characters() {
+        attrs(r#"meta / = "" ' / content"#);
+        attrs("meta =");
+        attrs("meta/");
+        attrs("");
+    }
+
+    // x.com serves this exact head: the first tag is a self-closing charset.
+    #[test]
+    fn page_with_self_closing_meta() {
+        let map = og(concat!(
+            r#"<html><head><meta charSet="utf-8"/>"#,
+            r#"<meta property="og:title" content="A post"/>"#,
+            r#"<meta property="og:image" content="https://example.com/i.png" />"#,
+            "<title>fallback</title></head></html>",
+        ));
+        assert_eq!(map.get("og:title").and_then(|v| v.as_str()), Some("A post"));
+        assert_eq!(
+            map.get("og:image").and_then(|v| v.as_str()),
+            Some("https://example.com/i.png")
+        );
+    }
+}
